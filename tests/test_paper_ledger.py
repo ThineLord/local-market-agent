@@ -50,6 +50,8 @@ def test_paper_buy_no_order_uses_no_side(repo, brief, snapshot):
     assert signal.action == SignalAction.PAPER_BUY_NO
     decision = RiskEngine().evaluate_signal(signal)
     assert decision.status == RiskStatus.APPROVED
+    repo.save_signal(signal)
+    repo.save_risk_decision(decision)
 
     order = PaperLedger(repo).create_order(
         signal=signal,

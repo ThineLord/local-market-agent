@@ -177,6 +177,23 @@ class SQLiteRepository:
         return self._list("risk_decisions", RiskDecision, market_id, limit)
 
     def append_paper_order(self, order: PaperOrder) -> None:
+        signal = self.load_signal(order.signal_id)
+        if signal is None:
+            msg = "paper order references an unknown signal_id"
+            raise ValueError(msg)
+        decision = self.load_risk_decision(order.risk_decision_id)
+        if decision is None:
+            msg = "paper order references an unknown risk_decision_id"
+            raise ValueError(msg)
+        if not decision.is_approved:
+            msg = "paper order requires an approved risk decision"
+            raise ValueError(msg)
+        if decision.signal_id != order.signal_id:
+            msg = "paper order risk_decision_id does not belong to signal_id"
+            raise ValueError(msg)
+        if signal.market_id != order.market_id:
+            msg = "paper order market_id does not match signal market_id"
+            raise ValueError(msg)
         self._save("paper_orders", "order_id", order)
 
     def load_paper_order(self, order_id: str) -> PaperOrder | None:
