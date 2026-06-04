@@ -125,6 +125,156 @@ def _row_label(row: dict[str, object]) -> str:
     )
 
 
+def _phase7_operations_view_model(repository: SQLiteRepository) -> dict[str, object]:
+    snapshots = repository.list_portfolio_snapshots(limit=1)
+    latest_snapshot = snapshots[0] if snapshots else None
+    run_rows = _phase7_run_rows(repository)
+    latest_run = run_rows[0] if run_rows else None
+    return {
+        "latest_run": latest_run,
+        "run_rows": run_rows,
+        "portfolio_summary": _phase7_portfolio_summary(latest_snapshot),
+        "open_positions": _phase7_open_position_rows(repository, latest_snapshot),
+        "paper_orders": _phase7_order_rows(repository),
+        "paper_fills": _phase7_fill_rows(repository),
+        "risk_gate_decisions": _phase7_risk_gate_rows(repository),
+        "latest_report_path": latest_run.get("report_path") if latest_run else "",
+    }
+
+
+def _phase7_run_rows(repository: SQLiteRepository) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for record in repository.list_phase7_run_records(limit=25):
+        rows.append(
+            {
+                "run_id": record.run_id,
+                "status": str(record.status),
+                "dry_run": record.dry_run,
+                "market_id": record.market_id or "",
+                "created_at": record.created_at,
+                "completed_at": record.completed_at,
+                "paper_order_id": record.paper_order_id or "",
+                "risk_gate_decision_id": record.risk_gate_decision_id or "",
+                "portfolio_snapshot_id": record.portfolio_snapshot_id or "",
+                "report_path": record.report_path or "",
+                "reasons": "; ".join(record.reasons),
+            }
+        )
+    return rows
+
+
+def _phase7_portfolio_summary(snapshot: object | None) -> dict[str, object]:
+    if snapshot is None:
+        return {
+            "snapshot_id": "",
+            "as_of": "",
+            "portfolio_value": 0.0,
+            "cash_balance": 0.0,
+            "realized_pnl": 0.0,
+            "unrealized_pnl": 0.0,
+            "exposure": 0.0,
+            "exposure_pct": 0.0,
+            "open_positions": 0,
+        }
+    market_values = getattr(snapshot, "market_values", {})
+    exposure = round(sum(max(0.0, value) for value in market_values.values()), 4)
+    portfolio_value = getattr(snapshot, "portfolio_value", 0.0)
+    exposure_pct = round(exposure / portfolio_value, 8) if portfolio_value else 0.0
+    return {
+        "snapshot_id": getattr(snapshot, "snapshot_id", ""),
+        "as_of": getattr(snapshot, "as_of", ""),
+        "portfolio_value": portfolio_value,
+        "cash_balance": getattr(snapshot, "cash_balance", 0.0),
+        "realized_pnl": getattr(snapshot, "realized_pnl", 0.0),
+        "unrealized_pnl": getattr(snapshot, "unrealized_pnl", 0.0),
+        "exposure": exposure,
+        "exposure_pct": exposure_pct,
+        "open_positions": getattr(snapshot, "open_positions", 0),
+    }
+
+
+def _phase7_open_position_rows(
+    repository: SQLiteRepository,
+    snapshot: object | None,
+) -> list[dict[str, object]]:
+    market_values = getattr(snapshot, "market_values", {}) if snapshot is not None else {}
+    rows: list[dict[str, object]] = []
+    for position in repository.list_positions(limit=100):
+        if not position.is_open:
+            continue
+        rows.append(
+            {
+                "position_id": position.position_id,
+                "market_id": position.market_id,
+                "side": str(position.side),
+                "quantity": position.quantity,
+                "average_price": position.average_price,
+                "fees": position.fees,
+                "market_value": market_values.get(position.position_id, 0.0),
+                "opened_at": position.opened_at,
+            }
+        )
+    return rows
+
+
+def _phase7_order_rows(repository: SQLiteRepository) -> list[dict[str, object]]:
+    return [
+        {
+            "order_id": order.order_id,
+            "market_id": order.market_id,
+            "signal_id": order.signal_id,
+            "risk_decision_id": order.risk_decision_id,
+            "side": str(order.side),
+            "quantity": order.quantity,
+            "fill_price": order.fill_price,
+            "fees": order.fees,
+            "status": str(order.status),
+            "created_at": order.created_at,
+        }
+        for order in repository.list_paper_orders(limit=100)
+    ]
+
+
+def _phase7_fill_rows(repository: SQLiteRepository) -> list[dict[str, object]]:
+    return [
+        {
+            "fill_id": fill.fill_id,
+            "order_id": fill.order_id,
+            "position_id": fill.position_id,
+            "market_id": fill.market_id,
+            "side": str(fill.side),
+            "quantity": fill.quantity,
+            "price": fill.price,
+            "fees": fill.fees,
+            "is_closing": fill.is_closing,
+            "filled_at": fill.filled_at,
+        }
+        for fill in repository.list_paper_fills(limit=100)
+    ]
+
+
+def _phase7_risk_gate_rows(repository: SQLiteRepository) -> list[dict[str, object]]:
+    return [
+        {
+            "risk_gate_decision_id": decision.risk_gate_decision_id,
+            "market_id": decision.market_id,
+            "status": str(decision.status),
+            "intent_id": decision.intent_id,
+            "reasons": "; ".join(decision.reasons),
+            "created_at": decision.created_at,
+        }
+        for decision in repository.list_risk_gate_decisions(limit=100)
+    ]
+
+
+def _show_phase7_table(label: str, rows: list[dict[str, object]], empty_message: str) -> None:
+    st.markdown(label)
+    if rows:
+        st.dataframe(pd.DataFrame(rows), width="stretch")
+    else:
+        st.info(empty_message)
+
+
 st.set_page_config(page_title="Local Market Agent", layout="wide")
 st.title("Local Market Agent")
 
@@ -138,6 +288,7 @@ page = st.sidebar.radio(
         "Paper Ledger",
         "Audit Chain",
         "Performance Report",
+        "Phase 7 Operations",
         "Settings",
     ],
 )
@@ -255,6 +406,54 @@ elif page == "Performance Report":
     st.subheader("Performance Report")
     st.dataframe(_frame(repo.list_performance_reports(limit=25)), width="stretch")
 
+elif page == "Phase 7 Operations":
+    st.subheader("Phase 7 Operations")
+    st.caption("Paper-only read-only operations view. No order, approval, live trading, or runner controls.")
+    model = _phase7_operations_view_model(repo)
+    summary = model["portfolio_summary"]
+    latest_run = model["latest_run"]
+
+    status_columns = st.columns(4)
+    status_columns[0].metric("Latest run", latest_run["status"] if latest_run else "no runs")
+    status_columns[1].metric("Open positions", summary["open_positions"])
+    status_columns[2].metric("Portfolio value", f"{summary['portfolio_value']:.4f}")
+    status_columns[3].metric("Exposure", f"{summary['exposure_pct'] * 100:.2f}%")
+
+    st.markdown("Latest report path")
+    latest_report_path = model["latest_report_path"]
+    if latest_report_path:
+        st.code(str(latest_report_path))
+    else:
+        st.info("No Phase 7 report path recorded.")
+
+    _show_phase7_table(
+        "Recent Phase 7 Runs",
+        model["run_rows"],
+        "No Phase 7 run records found.",
+    )
+    st.markdown("Latest Portfolio Snapshot")
+    st.dataframe(pd.DataFrame([summary]), width="stretch")
+    _show_phase7_table(
+        "Open Paper Positions",
+        model["open_positions"],
+        "No open paper positions.",
+    )
+    _show_phase7_table(
+        "Recent Paper Orders",
+        model["paper_orders"],
+        "No paper orders.",
+    )
+    _show_phase7_table(
+        "Recent Paper Fills",
+        model["paper_fills"],
+        "No paper fills.",
+    )
+    _show_phase7_table(
+        "Recent Risk Gate Decisions",
+        model["risk_gate_decisions"],
+        "No risk gate decisions.",
+    )
+
 elif page == "Settings":
     st.subheader("Settings")
     st.json(
@@ -267,5 +466,6 @@ elif page == "Settings":
             "human_approval_required": settings.human_approval_required,
             "llm_provider": settings.llm_provider,
             "risk": settings.risk.as_dict(),
+            "risk_gates": settings.risk_gates.as_dict(),
         }
     )
