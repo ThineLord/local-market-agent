@@ -228,6 +228,35 @@ class PaperOrder(StrictBaseModel):
         return self
 
 
+class PaperFill(StrictBaseModel):
+    fill_id: str = Field(default_factory=lambda: new_id("paper_fill"))
+    order_id: str = Field(min_length=1)
+    position_id: str = Field(min_length=1)
+    signal_id: str = Field(min_length=1)
+    risk_decision_id: str = Field(min_length=1)
+    market_id: str = Field(min_length=1)
+    filled_at: datetime = Field(default_factory=utc_now)
+    side: OrderSide
+    quantity: float = Field(gt=0)
+    price: float = Field(ge=0, le=1)
+    fees: float = Field(default=0.0, ge=0)
+    is_closing: bool = False
+    execution_mode: ExecutionMode = ExecutionMode.PAPER
+
+    @model_validator(mode="after")
+    def validate_paper_fill(self) -> PaperFill:
+        if self.execution_mode != ExecutionMode.PAPER:
+            msg = "paper fills cannot use live execution mode"
+            raise ValueError(msg)
+        if self.is_closing and self.side != OrderSide.SELL:
+            msg = "closing paper fills must use SELL side"
+            raise ValueError(msg)
+        if not self.is_closing and self.side == OrderSide.SELL:
+            msg = "SELL fills can only close existing paper positions"
+            raise ValueError(msg)
+        return self
+
+
 class Position(StrictBaseModel):
     position_id: str = Field(default_factory=lambda: new_id("position"))
     market_id: str = Field(min_length=1)
@@ -246,6 +275,32 @@ class Position(StrictBaseModel):
     @property
     def is_open(self) -> bool:
         return self.closed_at is None
+
+
+class PortfolioSnapshot(StrictBaseModel):
+    snapshot_id: str = Field(default_factory=lambda: new_id("portfolio_snapshot"))
+    as_of: datetime = Field(default_factory=utc_now)
+    starting_cash: float = Field(ge=0)
+    cash_balance: float = Field(ge=0)
+    portfolio_value: float = Field(ge=0)
+    realized_pnl: float
+    unrealized_pnl: float
+    total_fees: float = Field(ge=0)
+    open_positions: int = Field(ge=0)
+    closed_positions: int = Field(ge=0)
+    total_positions: int = Field(ge=0)
+    market_values: dict[str, float] = Field(default_factory=dict)
+    execution_mode: ExecutionMode = ExecutionMode.PAPER
+
+    @model_validator(mode="after")
+    def validate_paper_only(self) -> PortfolioSnapshot:
+        if self.execution_mode != ExecutionMode.PAPER:
+            msg = "portfolio snapshots cannot use live execution mode"
+            raise ValueError(msg)
+        if self.total_positions != self.open_positions + self.closed_positions:
+            msg = "total_positions must equal open_positions plus closed_positions"
+            raise ValueError(msg)
+        return self
 
 
 class PerformanceReport(StrictBaseModel):

@@ -7,7 +7,9 @@ from local_market_agent.schemas.models import (
     ExecutionMode,
     MarketSnapshot,
     OrderSide,
+    PaperFill,
     PaperOrder,
+    PortfolioSnapshot,
     RiskDecision,
     RiskStatus,
     Signal,
@@ -75,5 +77,63 @@ def test_paper_order_rejects_live_execution_mode(brief):
             quantity=1,
             limit_price=0.51,
             fill_price=0.51,
+            execution_mode=ExecutionMode.LIVE,
+        )
+
+
+def test_paper_fill_rejects_live_execution_mode(brief):
+    with pytest.raises(ValidationError):
+        PaperFill(
+            order_id="paper_order_test",
+            position_id="position_test",
+            signal_id="signal_test",
+            risk_decision_id="risk_test",
+            market_id=brief.market_id,
+            side=OrderSide.BUY_YES,
+            quantity=1,
+            price=0.51,
+            execution_mode=ExecutionMode.LIVE,
+        )
+
+
+def test_paper_fill_only_allows_sell_for_closing_fills(brief):
+    with pytest.raises(ValidationError, match="SELL fills can only close"):
+        PaperFill(
+            order_id="paper_order_test",
+            position_id="position_test",
+            signal_id="signal_test",
+            risk_decision_id="risk_test",
+            market_id=brief.market_id,
+            side=OrderSide.SELL,
+            quantity=1,
+            price=0.51,
+        )
+
+    with pytest.raises(ValidationError, match="closing paper fills must use SELL"):
+        PaperFill(
+            order_id="paper_order_test",
+            position_id="position_test",
+            signal_id="signal_test",
+            risk_decision_id="risk_test",
+            market_id=brief.market_id,
+            side=OrderSide.BUY_YES,
+            quantity=1,
+            price=0.51,
+            is_closing=True,
+        )
+
+
+def test_portfolio_snapshot_rejects_live_execution_mode():
+    with pytest.raises(ValidationError):
+        PortfolioSnapshot(
+            starting_cash=10_000,
+            cash_balance=10_000,
+            portfolio_value=10_000,
+            realized_pnl=0,
+            unrealized_pnl=0,
+            total_fees=0,
+            open_positions=0,
+            closed_positions=0,
+            total_positions=0,
             execution_mode=ExecutionMode.LIVE,
         )

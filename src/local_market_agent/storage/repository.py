@@ -10,8 +10,10 @@ from pydantic import BaseModel
 
 from local_market_agent.schemas import (
     MarketSnapshot,
+    PaperFill,
     PaperOrder,
     PerformanceReport,
+    PortfolioSnapshot,
     Position,
     ResearchBrief,
     RiskDecision,
@@ -30,7 +32,9 @@ class SQLiteRepository:
         "signals": "signal_id",
         "risk_decisions": "risk_decision_id",
         "paper_orders": "order_id",
+        "paper_fills": "fill_id",
         "positions": "position_id",
+        "portfolio_snapshots": "snapshot_id",
         "performance_reports": "report_id",
     }
 
@@ -67,6 +71,10 @@ class SQLiteRepository:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_orders_market ON paper_orders(market_id)"
             )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fills_market ON paper_fills(market_id)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_positions_market ON positions(market_id)"
+            )
 
     @staticmethod
     def _payload(model: BaseModel) -> str:
@@ -74,7 +82,11 @@ class SQLiteRepository:
 
     @staticmethod
     def _created_at(model: BaseModel) -> str:
-        value = getattr(model, "created_at", None) or getattr(model, "as_of", None)
+        value = (
+            getattr(model, "created_at", None)
+            or getattr(model, "filled_at", None)
+            or getattr(model, "as_of", None)
+        )
         if value is None:
             return ""
         return value.isoformat()
@@ -204,6 +216,33 @@ class SQLiteRepository:
     ) -> list[PaperOrder]:
         return self._list("paper_orders", PaperOrder, market_id, limit)
 
+    def append_paper_fill(self, fill: PaperFill) -> None:
+        order = self.load_paper_order(fill.order_id)
+        if order is None:
+            msg = "paper fill references an unknown order_id"
+            raise ValueError(msg)
+        if order.signal_id != fill.signal_id:
+            msg = "paper fill signal_id does not match order signal_id"
+            raise ValueError(msg)
+        if order.risk_decision_id != fill.risk_decision_id:
+            msg = "paper fill risk_decision_id does not match order risk_decision_id"
+            raise ValueError(msg)
+        if order.market_id != fill.market_id:
+            msg = "paper fill market_id does not match order market_id"
+            raise ValueError(msg)
+        if fill.quantity > order.quantity:
+            msg = "paper fill quantity cannot exceed order quantity"
+            raise ValueError(msg)
+        self._save("paper_fills", "fill_id", fill)
+
+    def load_paper_fill(self, fill_id: str) -> PaperFill | None:
+        return self._load("paper_fills", "fill_id", fill_id, PaperFill)
+
+    def list_paper_fills(
+        self, market_id: str | None = None, limit: int | None = None
+    ) -> list[PaperFill]:
+        return self._list("paper_fills", PaperFill, market_id, limit)
+
     def save_position(self, position: Position) -> None:
         self._save("positions", "position_id", position)
 
@@ -214,6 +253,17 @@ class SQLiteRepository:
         self, market_id: str | None = None, limit: int | None = None
     ) -> list[Position]:
         return self._list("positions", Position, market_id, limit)
+
+    def save_portfolio_snapshot(self, snapshot: PortfolioSnapshot) -> None:
+        self._save("portfolio_snapshots", "snapshot_id", snapshot)
+
+    def load_portfolio_snapshot(self, snapshot_id: str) -> PortfolioSnapshot | None:
+        return self._load(
+            "portfolio_snapshots", "snapshot_id", snapshot_id, PortfolioSnapshot
+        )
+
+    def list_portfolio_snapshots(self, limit: int | None = None) -> list[PortfolioSnapshot]:
+        return self._list("portfolio_snapshots", PortfolioSnapshot, None, limit)
 
     def save_performance_report(self, report: PerformanceReport) -> None:
         self._save("performance_reports", "report_id", report)

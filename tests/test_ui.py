@@ -43,4 +43,4 @@ def test_streamlit_audit_chain_rows_include_linked_objects(
     assert row["risk_approved"] is True
     assert row["veto_reasons"] == ""
     assert row["order_side"] == "BUY_YES"
-    assert row["order_status"] == "open"
+    assert row["order_status"] == "filled"
