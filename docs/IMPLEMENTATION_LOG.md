@@ -108,3 +108,13 @@
 - Safety audit result: no live-trading/order-execution/private endpoint code, no tracked secrets, and no direct LLM-to-order path found.
 - Unresolved issues: backtest/eval modules and deeper dashboard chain view remain thin placeholder areas for future tasks.
 - Next action: create private GitHub repository and draft PR for review.
+
+## Main baseline hygiene review
+
+- Status: completed.
+- Files changed: `docs/reports/main_baseline_hygiene_report.md`, `docs/IMPLEMENTATION_LOG.md`.
+- Validation commands run: `.venv/bin/ruff check .`, `.venv/bin/pytest`.
+- Test results: Ruff passed; pytest passed with 26 passed and 1 optional network test skipped.
+- Safety audit result: no code changes; no live-trading, Phase 7, or branch history changes made.
+- Unresolved issues: `origin/main` remains the scaffold commit with historical CI failure; this is documented as review hygiene, not a PR correctness blocker.
+- Next action: keep PR #1 draft for manual review; after merge, confirm `main` CI and set repository default branch to `main` if needed.
