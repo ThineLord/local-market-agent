@@ -64,6 +64,15 @@ class RiskGateDecisionStatus(StrEnum):
     HALTED = "halted"
 
 
+class Phase7RunStatus(StrEnum):
+    COMPLETED = "completed"
+    REJECTED = "rejected"
+    PENDING_MANUAL_APPROVAL = "pending_manual_approval"
+    HALTED = "halted"
+    DRY_RUN = "dry_run"
+    FAILED = "failed"
+
+
 class OrderSide(StrEnum):
     BUY_YES = "BUY_YES"
     BUY_NO = "BUY_NO"
@@ -374,6 +383,34 @@ class RiskGateDecision(StrictBaseModel):
     @property
     def is_halted(self) -> bool:
         return self.status == RiskGateDecisionStatus.HALTED
+
+
+class Phase7RunRecord(StrictBaseModel):
+    run_id: str = Field(default_factory=lambda: new_id("phase7_run"))
+    created_at: datetime = Field(default_factory=utc_now)
+    completed_at: datetime | None = None
+    report_date: datetime
+    status: Phase7RunStatus
+    dry_run: bool = False
+    market_id: str | None = None
+    snapshot_id: str | None = None
+    brief_id: str | None = None
+    signal_id: str | None = None
+    risk_decision_id: str | None = None
+    risk_gate_decision_id: str | None = None
+    paper_order_id: str | None = None
+    portfolio_snapshot_id: str | None = None
+    report_path: str | None = None
+    reasons: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    execution_mode: ExecutionMode = ExecutionMode.PAPER
+
+    @model_validator(mode="after")
+    def validate_paper_only(self) -> Phase7RunRecord:
+        if self.execution_mode != ExecutionMode.PAPER:
+            msg = "phase 7 run records cannot use live execution mode"
+            raise ValueError(msg)
+        return self
 
 
 class PerformanceReport(StrictBaseModel):

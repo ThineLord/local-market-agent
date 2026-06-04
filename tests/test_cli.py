@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from typer.testing import CliRunner
 
@@ -32,3 +33,30 @@ def test_cli_offline_demo_chain(tmp_path):
     result = runner.invoke(app, ["report-daily", "--db", str(db)])
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["orders"] == 1
+
+
+def test_cli_phase7_run_daily_fixture_smoke(tmp_path):
+    runner = CliRunner()
+    db = tmp_path / "phase7-cli.sqlite"
+    report_dir = tmp_path / "reports"
+
+    result = runner.invoke(
+        app,
+        [
+            "phase7-run-daily",
+            "--db",
+            str(db),
+            "--report-dir",
+            str(report_dir),
+            "--no-require-manual-approval",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["status"] == "completed"
+    assert payload["paper_order_id"] is not None
+    report_path = Path(payload["report_path"])
+    assert report_path.exists()
+    assert report_path.name.startswith("phase7_daily_report_")
+    assert report_path.suffix == ".md"

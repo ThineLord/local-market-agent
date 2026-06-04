@@ -10,6 +10,8 @@ from local_market_agent.schemas.models import (
     PaperFill,
     PaperOrder,
     PaperOrderIntent,
+    Phase7RunRecord,
+    Phase7RunStatus,
     PortfolioSnapshot,
     RiskDecision,
     RiskGateCheck,
@@ -172,5 +174,15 @@ def test_risk_gate_decision_rejects_live_execution_mode(brief):
                     reason="ok",
                 )
             ],
+            execution_mode=ExecutionMode.LIVE,
+        )
+
+
+def test_phase7_run_record_rejects_live_execution_mode(brief):
+    with pytest.raises(ValidationError):
+        Phase7RunRecord(
+            report_date=brief.created_at,
+            status=Phase7RunStatus.COMPLETED,
+            market_id=brief.market_id,
             execution_mode=ExecutionMode.LIVE,
         )

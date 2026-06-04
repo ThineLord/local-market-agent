@@ -8,6 +8,8 @@ from local_market_agent.schemas.models import (
     OrderSide,
     PaperFill,
     PaperOrder,
+    Phase7RunRecord,
+    Phase7RunStatus,
     PortfolioSnapshot,
     Position,
     RiskGateCheck,
@@ -104,6 +106,22 @@ def test_storage_roundtrip(repo, snapshot, evidence):
     )
     repo.save_risk_gate_decision(gate_decision)
     assert repo.load_risk_gate_decision(gate_decision.risk_gate_decision_id) == gate_decision
+
+    run_record = Phase7RunRecord(
+        report_date=signal.created_at,
+        status=Phase7RunStatus.COMPLETED,
+        market_id=signal.market_id,
+        snapshot_id=snapshot.snapshot_id,
+        brief_id=brief.brief_id,
+        signal_id=signal.signal_id,
+        risk_decision_id=decision.risk_decision_id,
+        risk_gate_decision_id=gate_decision.risk_gate_decision_id,
+        portfolio_snapshot_id=portfolio_snapshot.snapshot_id,
+        report_path="data/reports/phase7_daily_report_test.md",
+        reasons=["Paper run completed."],
+    )
+    repo.save_phase7_run_record(run_record)
+    assert repo.load_phase7_run_record(run_record.run_id) == run_record
 
 
 def test_storage_rejects_paper_order_without_saved_relationships(repo, brief):

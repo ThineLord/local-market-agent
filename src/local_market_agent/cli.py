@@ -10,6 +10,7 @@ from local_market_agent.adapters import FixtureAdapter
 from local_market_agent.agents import Reporter, ResearchBriefGenerator
 from local_market_agent.config import Settings, load_settings
 from local_market_agent.llm import MockLLMProvider, OpenAICompatibleProvider
+from local_market_agent.operations import Phase7DailyRunner
 from local_market_agent.paper import PaperLedger
 from local_market_agent.reporting import DailyReportService
 from local_market_agent.risk import RiskEngine
@@ -38,6 +39,7 @@ def _settings(db: Path | None) -> Settings:
         sec_user_agent=settings.sec_user_agent,
         run_network_tests=settings.run_network_tests,
         risk=settings.risk,
+        risk_gates=settings.risk_gates,
     )
 
 
@@ -235,6 +237,67 @@ def report_daily(
                 "unrealized_pnl": report.unrealized_pnl,
                 "jsonl": str(jsonl),
                 "csv": str(csv),
+            },
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("phase7-run-daily")
+def phase7_run_daily(
+    fixture: Annotated[Path, typer.Option(help="Market fixture path.")] = Path(
+        "data/fixtures/demo_market.json"
+    ),
+    evidence: Annotated[Path, typer.Option(help="Evidence fixture path.")] = Path(
+        "data/fixtures/demo_evidence.json"
+    ),
+    db: Annotated[Path | None, typer.Option(help="SQLite database path.")] = None,
+    report_dir: Annotated[Path, typer.Option(help="Local report output directory.")] = Path(
+        "data/reports"
+    ),
+    dry_run: Annotated[
+        bool,
+        typer.Option(help="Evaluate the paper run without creating paper positions."),
+    ] = False,
+    require_manual_approval: Annotated[
+        bool | None,
+        typer.Option(
+            "--require-manual-approval/--no-require-manual-approval",
+            help="Override Phase 7 paper risk gate manual approval mode for this run.",
+        ),
+    ] = None,
+    refresh_market_timestamp: Annotated[
+        bool,
+        typer.Option(
+            "--refresh-market-timestamp/--keep-fixture-timestamp",
+            help="Refresh fixture market data timestamp to the run time before risk gates.",
+        ),
+    ] = True,
+) -> None:
+    settings = _settings(db)
+    repo = _repository(settings)
+    record = Phase7DailyRunner(
+        repository=repo,
+        settings=settings,
+        market_fixture=fixture,
+        evidence_fixture=evidence,
+        report_dir=report_dir,
+        refresh_market_timestamp=refresh_market_timestamp,
+    ).run(
+        dry_run=dry_run,
+        require_manual_approval=require_manual_approval,
+    )
+    typer.echo(
+        json.dumps(
+            {
+                "run_id": record.run_id,
+                "status": record.status,
+                "dry_run": record.dry_run,
+                "market_id": record.market_id,
+                "paper_order_id": record.paper_order_id,
+                "risk_gate_decision_id": record.risk_gate_decision_id,
+                "report_path": record.report_path,
+                "db_path": str(settings.db_path),
             },
             sort_keys=True,
         )

@@ -13,6 +13,7 @@ from local_market_agent.schemas import (
     PaperFill,
     PaperOrder,
     PerformanceReport,
+    Phase7RunRecord,
     PortfolioSnapshot,
     Position,
     ResearchBrief,
@@ -37,6 +38,7 @@ class SQLiteRepository:
         "paper_fills": "fill_id",
         "positions": "position_id",
         "portfolio_snapshots": "snapshot_id",
+        "phase7_run_records": "run_id",
         "performance_reports": "report_id",
     }
 
@@ -79,6 +81,9 @@ class SQLiteRepository:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_fills_market ON paper_fills(market_id)")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_positions_market ON positions(market_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_phase7_runs_market ON phase7_run_records(market_id)"
             )
 
     @staticmethod
@@ -285,6 +290,17 @@ class SQLiteRepository:
 
     def list_portfolio_snapshots(self, limit: int | None = None) -> list[PortfolioSnapshot]:
         return self._list("portfolio_snapshots", PortfolioSnapshot, None, limit)
+
+    def save_phase7_run_record(self, record: Phase7RunRecord) -> None:
+        self._save("phase7_run_records", "run_id", record)
+
+    def load_phase7_run_record(self, run_id: str) -> Phase7RunRecord | None:
+        return self._load("phase7_run_records", "run_id", run_id, Phase7RunRecord)
+
+    def list_phase7_run_records(
+        self, market_id: str | None = None, limit: int | None = None
+    ) -> list[Phase7RunRecord]:
+        return self._list("phase7_run_records", Phase7RunRecord, market_id, limit)
 
     def save_performance_report(self, report: PerformanceReport) -> None:
         self._save("performance_reports", "report_id", report)
