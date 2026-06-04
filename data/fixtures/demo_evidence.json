@@ -1,0 +1,35 @@
+[
+  {
+    "evidence_id": "evidence-registration-up",
+    "source": "fixture-civic-board",
+    "title": "New voter registrations are above the prior cycle",
+    "url": "https://example.test/news/registration-up",
+    "published_at": "2026-05-30T12:00:00Z",
+    "summary": "Registration counts are 7 percent higher than the comparable point in the previous cycle.",
+    "relevance_score": 0.86,
+    "credibility_score": 0.82,
+    "metadata": {"probability_hint": 0.68}
+  },
+  {
+    "evidence_id": "evidence-weather-risk",
+    "source": "fixture-weather-service",
+    "title": "Early forecast suggests moderate rain risk",
+    "url": "https://example.test/news/weather-risk",
+    "published_at": "2026-06-01T09:00:00Z",
+    "summary": "Historical turnout drops slightly when election-day rainfall is above normal.",
+    "relevance_score": 0.76,
+    "credibility_score": 0.80,
+    "metadata": {"probability_hint": 0.48, "counter": true}
+  },
+  {
+    "evidence_id": "evidence-early-interest",
+    "source": "fixture-pollster",
+    "title": "Survey interest is modestly above baseline",
+    "url": "https://example.test/news/interest-up",
+    "published_at": "2026-06-02T15:30:00Z",
+    "summary": "A nonpartisan survey reports above-baseline intent to vote among likely voters.",
+    "relevance_score": 0.82,
+    "credibility_score": 0.80,
+    "metadata": {"probability_hint": 0.65}
+  }
+]
