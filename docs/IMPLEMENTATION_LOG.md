@@ -138,3 +138,13 @@
 - Safety audit result: no live trading, Phase 7 automation, secret handling, or order-execution paths added.
 - Unresolved issues: remaining P2 items are simplified strategy EV/cost modeling, JSON-object storage without migrations, mostly happy-path CLI tests, no full browser-level Streamlit regression, and omitted drawdown/Brier/calibration/cash-ledger metrics.
 - Next action: keep PR #1 draft and proceed to manual review.
+
+## Final pre-merge gate for Phase 0-6 MVP
+
+- Status: completed.
+- Files changed: `docs/reports/final_premerge_gate_report.md`, `docs/IMPLEMENTATION_LOG.md`.
+- Validation commands run: `git status --short --branch`, `git log --oneline --graph --decorate --all -n 30`, `gh pr view 1 --json url,state,isDraft,mergeStateStatus,statusCheckRollup,baseRefName,headRefName`, `.venv/bin/ruff check .`, `.venv/bin/pytest`, `LMA_DB_PATH=data/final_gate_cli.sqlite .venv/bin/lma ingest-demo`, `LMA_DB_PATH=data/final_gate_cli.sqlite .venv/bin/lma generate-brief --fixture data/fixtures/demo_market.json`, `LMA_DB_PATH=data/final_gate_cli.sqlite .venv/bin/lma risk-check`, `LMA_DB_PATH=data/final_gate_cli.sqlite .venv/bin/lma paper-log`, `LMA_DB_PATH=data/final_gate_cli.sqlite .venv/bin/lma report-daily`, `git ls-files`, tracked-file `git grep` safety scans.
+- Test results: Ruff passed; pytest passed with 30 passed and 1 optional network test skipped; offline CLI chain passed on fresh ignored `data/final_gate_cli.sqlite`.
+- Safety audit result: tracked-file scan found no live trading, real-money execution, private trading endpoint implementation, withdrawal/wallet/key workflow, secret leak, or direct LLM-to-order path. Keyword hits were safety docs, tests, veto logic, placeholder `.env.example`, optional runtime LLM key plumbing, or read-only public adapter URLs.
+- Unresolved issues: accepted P2 items remain strategy EV/cost simplification, JSON-object storage without migrations, mostly happy-path CLI/failure coverage, no full browser-level Streamlit regression, omitted drawdown/Brier/calibration/cash-ledger metrics, and placeholder backtest/eval/crypto/equity modules.
+- Next action: mark PR #1 ready for review; do not merge and do not start Phase 7.
