@@ -10,6 +10,9 @@ from local_market_agent.schemas.models import (
     PaperOrder,
     PortfolioSnapshot,
     Position,
+    RiskGateCheck,
+    RiskGateDecision,
+    RiskGateDecisionStatus,
 )
 from local_market_agent.strategy import PredictionMarketEdgeStrategy
 
@@ -83,6 +86,24 @@ def test_storage_roundtrip(repo, snapshot, evidence):
     )
     repo.save_portfolio_snapshot(portfolio_snapshot)
     assert repo.load_portfolio_snapshot(portfolio_snapshot.snapshot_id) == portfolio_snapshot
+
+    gate_decision = RiskGateDecision(
+        intent_id="intent_test",
+        signal_id=signal.signal_id,
+        market_id=signal.market_id,
+        status=RiskGateDecisionStatus.APPROVED,
+        reasons=["Approved by paper risk gates."],
+        checks=[
+            RiskGateCheck(
+                gate="market_data_freshness",
+                status=RiskGateDecisionStatus.APPROVED,
+                passed=True,
+                reason="fresh",
+            )
+        ],
+    )
+    repo.save_risk_gate_decision(gate_decision)
+    assert repo.load_risk_gate_decision(gate_decision.risk_gate_decision_id) == gate_decision
 
 
 def test_storage_rejects_paper_order_without_saved_relationships(repo, brief):

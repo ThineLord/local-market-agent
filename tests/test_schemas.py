@@ -9,8 +9,12 @@ from local_market_agent.schemas.models import (
     OrderSide,
     PaperFill,
     PaperOrder,
+    PaperOrderIntent,
     PortfolioSnapshot,
     RiskDecision,
+    RiskGateCheck,
+    RiskGateDecision,
+    RiskGateDecisionStatus,
     RiskStatus,
     Signal,
     SignalAction,
@@ -135,5 +139,38 @@ def test_portfolio_snapshot_rejects_live_execution_mode():
             open_positions=0,
             closed_positions=0,
             total_positions=0,
+            execution_mode=ExecutionMode.LIVE,
+        )
+
+
+def test_paper_order_intent_rejects_live_execution_mode(brief):
+    with pytest.raises(ValidationError):
+        PaperOrderIntent(
+            signal_id="signal_test",
+            market_id=brief.market_id,
+            side=OrderSide.BUY_YES,
+            quantity=1,
+            limit_price=0.51,
+            notional=0.51,
+            execution_mode=ExecutionMode.LIVE,
+        )
+
+
+def test_risk_gate_decision_rejects_live_execution_mode(brief):
+    with pytest.raises(ValidationError):
+        RiskGateDecision(
+            intent_id="intent_test",
+            signal_id="signal_test",
+            market_id=brief.market_id,
+            status=RiskGateDecisionStatus.APPROVED,
+            reasons=["Approved for paper gates only."],
+            checks=[
+                RiskGateCheck(
+                    gate="paper_only",
+                    status=RiskGateDecisionStatus.APPROVED,
+                    passed=True,
+                    reason="ok",
+                )
+            ],
             execution_mode=ExecutionMode.LIVE,
         )

@@ -13,6 +13,30 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 @dataclass(frozen=True)
+class RiskGateConfig:
+    max_market_data_age_seconds: int = 300
+    max_daily_new_positions: int = 3
+    max_position_size_pct: float = 0.10
+    max_total_portfolio_exposure_pct: float = 0.50
+    daily_drawdown_limit_pct: float = 0.03
+    max_consecutive_losses: int = 5
+    consecutive_loss_cooldown_hours: int = 48
+    require_manual_approval: bool = True
+
+    def as_dict(self) -> dict[str, float | int | bool]:
+        return {
+            "max_market_data_age_seconds": self.max_market_data_age_seconds,
+            "max_daily_new_positions": self.max_daily_new_positions,
+            "max_position_size_pct": self.max_position_size_pct,
+            "max_total_portfolio_exposure_pct": self.max_total_portfolio_exposure_pct,
+            "daily_drawdown_limit_pct": self.daily_drawdown_limit_pct,
+            "max_consecutive_losses": self.max_consecutive_losses,
+            "consecutive_loss_cooldown_hours": self.consecutive_loss_cooldown_hours,
+            "require_manual_approval": self.require_manual_approval,
+        }
+
+
+@dataclass(frozen=True)
 class RiskConfig:
     max_position_pct: float = 0.01
     max_daily_loss_pct: float = 0.02
@@ -67,12 +91,16 @@ class Settings:
     sec_user_agent: str = "local-market-agent@example.com"
     run_network_tests: bool = False
     risk: RiskConfig = field(default_factory=RiskConfig)
+    risk_gates: RiskGateConfig = field(default_factory=RiskGateConfig)
 
 
 def load_settings() -> Settings:
     risk = RiskConfig(
         live_trading_allowed=_env_bool("ALLOW_LIVE_ORDERS", False),
         compliance_requires_manual_approval=_env_bool("HUMAN_APPROVAL_REQUIRED", True),
+    )
+    risk_gates = RiskGateConfig(
+        require_manual_approval=_env_bool("HUMAN_APPROVAL_REQUIRED", True),
     )
     return Settings(
         db_path=Path(os.getenv("LMA_DB_PATH", "data/local_market_agent.sqlite")),
@@ -92,4 +120,5 @@ def load_settings() -> Settings:
         sec_user_agent=os.getenv("LMA_SEC_USER_AGENT", "local-market-agent@example.com"),
         run_network_tests=_env_bool("LMA_RUN_NETWORK_TESTS", False),
         risk=risk,
+        risk_gates=risk_gates,
     )

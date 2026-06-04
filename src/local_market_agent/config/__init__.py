@@ -1,3 +1,3 @@
-from local_market_agent.config.settings import RiskConfig, Settings, load_settings
+from local_market_agent.config.settings import RiskConfig, RiskGateConfig, Settings, load_settings
 
-__all__ = ["RiskConfig", "Settings", "load_settings"]
+__all__ = ["RiskConfig", "RiskGateConfig", "Settings", "load_settings"]

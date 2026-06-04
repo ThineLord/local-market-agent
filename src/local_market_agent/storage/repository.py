@@ -17,6 +17,7 @@ from local_market_agent.schemas import (
     Position,
     ResearchBrief,
     RiskDecision,
+    RiskGateDecision,
     Signal,
 )
 
@@ -31,6 +32,7 @@ class SQLiteRepository:
         "research_briefs": "brief_id",
         "signals": "signal_id",
         "risk_decisions": "risk_decision_id",
+        "risk_gate_decisions": "risk_gate_decision_id",
         "paper_orders": "order_id",
         "paper_fills": "fill_id",
         "positions": "position_id",
@@ -68,6 +70,9 @@ class SQLiteRepository:
                 "CREATE INDEX IF NOT EXISTS idx_briefs_market ON research_briefs(market_id)"
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_signals_market ON signals(market_id)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_risk_gate_market ON risk_gate_decisions(market_id)"
+            )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_orders_market ON paper_orders(market_id)"
             )
@@ -187,6 +192,22 @@ class SQLiteRepository:
         self, market_id: str | None = None, limit: int | None = None
     ) -> list[RiskDecision]:
         return self._list("risk_decisions", RiskDecision, market_id, limit)
+
+    def save_risk_gate_decision(self, decision: RiskGateDecision) -> None:
+        self._save("risk_gate_decisions", "risk_gate_decision_id", decision)
+
+    def load_risk_gate_decision(self, risk_gate_decision_id: str) -> RiskGateDecision | None:
+        return self._load(
+            "risk_gate_decisions",
+            "risk_gate_decision_id",
+            risk_gate_decision_id,
+            RiskGateDecision,
+        )
+
+    def list_risk_gate_decisions(
+        self, market_id: str | None = None, limit: int | None = None
+    ) -> list[RiskGateDecision]:
+        return self._list("risk_gate_decisions", RiskGateDecision, market_id, limit)
 
     def append_paper_order(self, order: PaperOrder) -> None:
         signal = self.load_signal(order.signal_id)

@@ -57,6 +57,13 @@ class RiskStatus(StrEnum):
     VETOED = "vetoed"
 
 
+class RiskGateDecisionStatus(StrEnum):
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    PENDING_MANUAL_APPROVAL = "pending_manual_approval"
+    HALTED = "halted"
+
+
 class OrderSide(StrEnum):
     BUY_YES = "BUY_YES"
     BUY_NO = "BUY_NO"
@@ -257,6 +264,29 @@ class PaperFill(StrictBaseModel):
         return self
 
 
+class PaperOrderIntent(StrictBaseModel):
+    intent_id: str = Field(default_factory=lambda: new_id("paper_intent"))
+    signal_id: str = Field(min_length=1)
+    market_id: str = Field(min_length=1)
+    created_at: datetime = Field(default_factory=utc_now)
+    side: OrderSide
+    quantity: float = Field(gt=0)
+    limit_price: float = Field(ge=0, le=1)
+    notional: float = Field(gt=0)
+    execution_mode: ExecutionMode = ExecutionMode.PAPER
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_paper_intent(self) -> PaperOrderIntent:
+        if self.execution_mode != ExecutionMode.PAPER:
+            msg = "paper order intents cannot use live execution mode"
+            raise ValueError(msg)
+        if self.side not in {OrderSide.BUY_YES, OrderSide.BUY_NO, OrderSide.BUY}:
+            msg = "paper order intents can only open paper buy positions"
+            raise ValueError(msg)
+        return self
+
+
 class Position(StrictBaseModel):
     position_id: str = Field(default_factory=lambda: new_id("position"))
     market_id: str = Field(min_length=1)
@@ -301,6 +331,49 @@ class PortfolioSnapshot(StrictBaseModel):
             msg = "total_positions must equal open_positions plus closed_positions"
             raise ValueError(msg)
         return self
+
+
+class RiskGateCheck(StrictBaseModel):
+    gate: str = Field(min_length=1)
+    status: RiskGateDecisionStatus
+    passed: bool
+    reason: str
+    observed: float | int | str | bool | None = None
+    limit: float | int | str | bool | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RiskGateDecision(StrictBaseModel):
+    risk_gate_decision_id: str = Field(default_factory=lambda: new_id("risk_gate"))
+    intent_id: str = Field(min_length=1)
+    signal_id: str = Field(min_length=1)
+    market_id: str = Field(min_length=1)
+    created_at: datetime = Field(default_factory=utc_now)
+    status: RiskGateDecisionStatus
+    reasons: list[str] = Field(min_length=1)
+    checks: list[RiskGateCheck] = Field(min_length=1)
+    config_snapshot: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    execution_mode: ExecutionMode = ExecutionMode.PAPER
+
+    @model_validator(mode="after")
+    def validate_paper_only(self) -> RiskGateDecision:
+        if self.execution_mode != ExecutionMode.PAPER:
+            msg = "risk gate decisions cannot use live execution mode"
+            raise ValueError(msg)
+        return self
+
+    @property
+    def is_approved(self) -> bool:
+        return self.status == RiskGateDecisionStatus.APPROVED
+
+    @property
+    def requires_manual_approval(self) -> bool:
+        return self.status == RiskGateDecisionStatus.PENDING_MANUAL_APPROVAL
+
+    @property
+    def is_halted(self) -> bool:
+        return self.status == RiskGateDecisionStatus.HALTED
 
 
 class PerformanceReport(StrictBaseModel):
