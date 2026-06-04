@@ -1,0 +1,91 @@
+# Implementation Log
+
+## Batch 0 - Preflight and repo hygiene
+
+- Status: completed.
+- Files changed: `README.md`, `pyproject.toml`, `.gitignore`, `.env.example`, `AGENTS.md`, docs, fixtures, CI skeleton.
+- Validation commands run: `python --version`, `uv --version`.
+- Test results: Python 3.13.13 available through `/opt/homebrew/bin/python3.13`; `uv` not installed, so local `.venv` plus pip was used.
+- Unresolved issues: none.
+- Next action: completed.
+
+## Batch 1 - Project skeleton and CLI
+
+- Status: completed.
+- Files changed: `src/local_market_agent/**`, `ui/app.py`, `data/**`, `tests/**`.
+- Validation commands run: `lma ingest-demo`, `lma generate-brief`, `lma risk-check`, `lma paper-log`, `lma report-daily`.
+- Test results: offline CLI chain completed with approved paper-only risk decision and deterministic simulated fill.
+- Unresolved issues: none.
+- Next action: completed.
+
+## Batch 2 - Core schemas and local storage
+
+- Status: completed.
+- Files changed: `src/local_market_agent/schemas/models.py`, `src/local_market_agent/storage/repository.py`, schema/storage tests.
+- Validation commands run: `pytest`.
+- Test results: schema validation, relationship checks, and SQLite roundtrips passed.
+- Unresolved issues: none.
+- Next action: completed.
+
+## Batch 3 - LLM provider abstraction
+
+- Status: completed.
+- Files changed: `src/local_market_agent/llm/providers.py`, research tests.
+- Validation commands run: `pytest`.
+- Test results: deterministic mock output verified; invalid JSON retry boundary verified without external API calls.
+- Unresolved issues: none.
+- Next action: completed.
+
+## Batch 4 - Read-only market adapters
+
+- Status: completed.
+- Files changed: fixture, Polymarket, Kalshi, yfinance, SEC EDGAR, and GDELT adapters.
+- Validation commands run: `pytest`.
+- Test results: offline adapter path passed; optional network test is marked `network` and skipped unless `LMA_RUN_NETWORK_TESTS=true`.
+- Unresolved issues: none.
+- Next action: completed.
+
+## Batch 5 - Research brief pipeline
+
+- Status: completed.
+- Files changed: `src/local_market_agent/agents/research.py`, fixtures, research tests.
+- Validation commands run: `pytest`, `lma generate-brief --fixture data/fixtures/demo_market.json`.
+- Test results: sparse evidence lowers confidence, missing price blocks `paper_buy`, no evidence yields no trade.
+- Unresolved issues: none.
+- Next action: completed.
+
+## Batch 6 - Strategy and risk engine
+
+- Status: completed.
+- Files changed: `src/local_market_agent/strategy/prediction_market.py`, `src/local_market_agent/risk/engine.py`, safety tests.
+- Validation commands run: `pytest`, `lma risk-check`.
+- Test results: low confidence, wide spread, insufficient edge, live trading attempts, and LLM bypass attempts are vetoed.
+- Unresolved issues: none.
+- Next action: completed.
+
+## Batch 7 - Paper trading ledger
+
+- Status: completed.
+- Files changed: `src/local_market_agent/paper/ledger.py`, `src/local_market_agent/reporting/daily.py`, paper tests.
+- Validation commands run: `pytest`, `lma paper-log`, `lma report-daily`.
+- Test results: paper order requires approved risk decision; deterministic fill, position lifecycle, PnL, JSONL/CSV export, and daily report pass.
+- Unresolved issues: none.
+- Next action: completed.
+
+## Batch 8 - Streamlit dashboard
+
+- Status: completed.
+- Files changed: `ui/app.py`.
+- Validation commands run: `python -c "import runpy; runpy.run_path('ui/app.py')"`.
+- Test results: import/startup smoke passed without leaving a server running; bare-mode Streamlit context warnings are expected.
+- Unresolved issues: none.
+- Next action: completed.
+
+## Batch 9 - Hardening, docs, and CI
+
+- Status: completed.
+- Files changed: docs, tests, `.github/workflows/ci.yml`, ruff config.
+- Validation commands run: `ruff check .`, `pytest`, offline CLI chain.
+- Test results: Ruff passed; pytest passed with 20 passed and 1 optional network test skipped; CLI chain passed.
+- Unresolved issues: no remote is configured, so PR creation is pending a GitHub remote.
+- Next action: Phase 7 continuous paper run setup.
