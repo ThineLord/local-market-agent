@@ -14,13 +14,14 @@ def _env_bool(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class RiskConfig:
-    max_position_pct: float = 0.02
-    max_daily_loss_pct: float = 0.03
-    max_total_drawdown_pct: float = 0.08
+    max_position_pct: float = 0.01
+    max_daily_loss_pct: float = 0.02
+    max_total_drawdown_pct: float = 0.05
     max_open_positions: int = 5
     min_confidence: float = 0.60
     min_edge: float = 0.08
     max_spread: float = 0.08
+    min_liquidity_depth: float = 100.0
     no_leverage: bool = True
     no_derivatives: bool = True
     no_live_trading: bool = True
@@ -39,6 +40,7 @@ class RiskConfig:
             "min_confidence": self.min_confidence,
             "min_edge": self.min_edge,
             "max_spread": self.max_spread,
+            "min_liquidity_depth": self.min_liquidity_depth,
             "no_leverage": self.no_leverage,
             "no_derivatives": self.no_derivatives,
             "no_live_trading": self.no_live_trading,

@@ -89,3 +89,12 @@
 - Test results: Ruff passed; pytest passed with 20 passed and 1 optional network test skipped; CLI chain passed.
 - Unresolved issues: no remote is configured, so PR creation is pending a GitHub remote.
 - Next action: Phase 7 continuous paper run setup.
+
+## Alignment audit against original master plan
+
+- Status: completed.
+- Files changed: `docs/MASTER_PLAN_ALIGNMENT_REPORT.md`, schemas, risk config, mock LLM output, research calibration, prediction-market strategy, risk engine, paper ledger, Polymarket adapter, adapter base error handling, and tests.
+- Validation commands run: `ruff check .`, `pytest`, `lma ingest-demo`, `lma generate-brief --fixture data/fixtures/demo_market.json`, `lma risk-check`, `lma paper-log`, `lma report-daily`.
+- Test results: Ruff passed; pytest passed with 26 passed and 1 optional network test skipped; offline CLI chain passed with `paper_buy_yes` and 1% position sizing.
+- Unresolved issues: no remote is configured, so PR creation remains pending a GitHub remote.
+- Next action: review Phase 7 continuous paper run design without adding live trading.

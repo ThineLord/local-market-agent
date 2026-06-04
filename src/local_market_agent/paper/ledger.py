@@ -18,6 +18,11 @@ from local_market_agent.schemas.models import (
 )
 from local_market_agent.storage import SQLiteRepository
 
+ACTIONABLE_PAPER_BUYS = {
+    SignalAction.PAPER_BUY_YES,
+    SignalAction.PAPER_BUY_NO,
+}
+
 
 @dataclass
 class PaperLedger:
@@ -40,11 +45,11 @@ class PaperLedger:
         if risk_decision.signal_id != signal.signal_id:
             msg = "risk decision does not belong to signal"
             raise ValueError(msg)
-        if signal.action != SignalAction.PAPER_BUY:
-            msg = "paper ledger can only create paper_buy orders"
+        if signal.action not in ACTIONABLE_PAPER_BUYS:
+            msg = "paper ledger can only create paper_buy_yes/no orders"
             raise ValueError(msg)
 
-        limit_price = snapshot.best_ask or snapshot.last_price or snapshot.market_implied_probability
+        side, limit_price = _paper_side_and_limit(signal, snapshot)
         if limit_price is None:
             msg = "cannot simulate fill without a market price"
             raise ValueError(msg)
@@ -59,7 +64,7 @@ class PaperLedger:
             signal_id=signal.signal_id,
             risk_decision_id=risk_decision.risk_decision_id,
             market_id=signal.market_id,
-            side=OrderSide.BUY,
+            side=side,
             quantity=quantity,
             limit_price=limit_price,
             fill_price=fill_price,
@@ -70,7 +75,7 @@ class PaperLedger:
             signal_id=signal.signal_id,
             risk_decision_id=risk_decision.risk_decision_id,
             order_id=order.order_id,
-            side=OrderSide.BUY,
+            side=side,
             quantity=quantity,
             average_price=fill_price,
             fees=fees,
@@ -142,3 +147,19 @@ class PaperLedger:
                 row = order.model_dump(mode="json")
                 writer.writerow({key: row[key] for key in fieldnames})
         return output
+
+
+def _paper_side_and_limit(
+    signal: Signal, snapshot: MarketSnapshot
+) -> tuple[OrderSide, float | None]:
+    if signal.action == SignalAction.PAPER_BUY_YES:
+        return (
+            OrderSide.BUY_YES,
+            snapshot.best_ask or snapshot.last_price or snapshot.market_implied_probability,
+        )
+    no_price = None
+    if snapshot.best_bid is not None:
+        no_price = 1 - snapshot.best_bid
+    elif snapshot.market_implied_probability is not None:
+        no_price = 1 - snapshot.market_implied_probability
+    return (OrderSide.BUY_NO, no_price)

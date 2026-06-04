@@ -13,6 +13,12 @@ from local_market_agent.schemas.models import (
 )
 from local_market_agent.storage import SQLiteRepository
 
+PAPER_BUY_ACTIONS = {
+    RecommendedAction.PAPER_BUY_YES,
+    RecommendedAction.PAPER_BUY_NO,
+    RecommendedAction.PAPER_BUY,
+}
+
 
 @dataclass
 class Researcher:
@@ -36,9 +42,9 @@ class Skeptic:
         if not brief.evidence and not brief.counter_evidence:
             action = RecommendedAction.SKIP
             reasons.append("No trade recommendation without evidence.")
-        if brief.market_implied_probability is None and action == RecommendedAction.PAPER_BUY:
+        if brief.market_implied_probability is None and action in PAPER_BUY_ACTIONS:
             action = RecommendedAction.OBSERVE
-            reasons.append("Missing market price prevents paper_buy.")
+            reasons.append("Missing market price prevents paper_buy_yes/no.")
         if action == RecommendedAction.PAPER_SELL:
             action = RecommendedAction.OBSERVE
             reasons.append("Shorting is disabled; negative edge is observe-only.")
@@ -57,12 +63,12 @@ class Calibrator:
         if evidence_count < 2:
             confidence = min(confidence, 0.45)
             reasons.append("Sparse evidence lowers confidence.")
-        if brief.evidence_quality < 0.65 and action == RecommendedAction.PAPER_BUY:
+        if brief.evidence_quality < 0.65 and action in PAPER_BUY_ACTIONS:
             action = RecommendedAction.OBSERVE
-            reasons.append("Evidence quality is below the paper_buy threshold.")
-        if confidence < 0.60 and action == RecommendedAction.PAPER_BUY:
+            reasons.append("Evidence quality is below the paper_buy_yes/no threshold.")
+        if confidence < 0.60 and action in PAPER_BUY_ACTIONS:
             action = RecommendedAction.OBSERVE
-            reasons.append("Confidence is below the paper_buy threshold.")
+            reasons.append("Confidence is below the paper_buy_yes/no threshold.")
         return brief.model_copy(
             update={
                 "confidence": round(confidence, 4),

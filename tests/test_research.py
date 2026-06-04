@@ -7,7 +7,7 @@ from local_market_agent.schemas.models import RecommendedAction
 def test_research_brief_generator_outputs_valid_brief(snapshot, evidence):
     brief = ResearchBriefGenerator().generate(snapshot, evidence)
     assert brief.market_id == snapshot.market.market_id
-    assert brief.recommended_action == RecommendedAction.PAPER_BUY
+    assert brief.recommended_action == RecommendedAction.PAPER_BUY_YES
     assert brief.uncertainty_notes
     assert brief.must_not_trade_reasons
 
@@ -29,7 +29,10 @@ def test_missing_market_price_prevents_paper_buy(snapshot, evidence):
         }
     )
     brief = ResearchBriefGenerator().generate(missing_price, evidence)
-    assert brief.recommended_action != RecommendedAction.PAPER_BUY
+    assert brief.recommended_action not in {
+        RecommendedAction.PAPER_BUY_YES,
+        RecommendedAction.PAPER_BUY_NO,
+    }
     assert any("Missing market price" in reason for reason in brief.must_not_trade_reasons)
 
 

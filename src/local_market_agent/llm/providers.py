@@ -74,7 +74,7 @@ class MockLLMProvider:
             reasons.append("No evidence was available.")
             uncertainty_notes.append("No external corroboration was supplied.")
         if market_probability is None:
-            reasons.append("Missing market price prevents a paper_buy recommendation.")
+            reasons.append("Missing market price prevents a paper_buy_yes/no recommendation.")
             uncertainty_notes.append("Market-implied probability is unavailable.")
         if evidence_quality < 0.65:
             reasons.append("Evidence quality is below the strategy threshold.")
@@ -89,9 +89,9 @@ class MockLLMProvider:
         elif confidence >= 0.60 and evidence_quality >= 0.65 and estimated_probability is not None:
             threshold = max(0.08, 2 * (spread or 0.0))
             if estimated_probability - market_probability >= threshold:
-                action = "paper_buy"
+                action = "paper_buy_yes"
             elif market_probability - estimated_probability >= threshold:
-                reasons.append("Negative edge is observed only; shorting is disabled.")
+                action = "paper_buy_no"
 
         thesis = f"{market['title']}: {action.replace('_', ' ')}"
         rationale = (

@@ -35,16 +35,20 @@ class MarketStatus(StrEnum):
 
 
 class RecommendedAction(StrEnum):
+    OBSERVE = "observe"
+    PAPER_BUY_YES = "paper_buy_yes"
+    PAPER_BUY_NO = "paper_buy_no"
     PAPER_BUY = "paper_buy"
     PAPER_SELL = "paper_sell"
-    OBSERVE = "observe"
     SKIP = "skip"
 
 
 class SignalAction(StrEnum):
+    OBSERVE = "observe"
+    PAPER_BUY_YES = "paper_buy_yes"
+    PAPER_BUY_NO = "paper_buy_no"
     PAPER_BUY = "paper_buy"
     PAPER_SELL = "paper_sell"
-    OBSERVE = "observe"
     SKIP = "skip"
 
 
@@ -54,11 +58,16 @@ class RiskStatus(StrEnum):
 
 
 class OrderSide(StrEnum):
+    BUY_YES = "BUY_YES"
+    BUY_NO = "BUY_NO"
+    SELL = "SELL"
+    OBSERVE = "OBSERVE"
     BUY = "buy"
-    SELL = "sell"
 
 
 class OrderStatus(StrEnum):
+    OPEN = "open"
+    CANCELLED = "cancelled"
     FILLED = "filled"
     REJECTED = "rejected"
     CLOSED = "closed"
@@ -135,6 +144,8 @@ class ResearchBrief(StrictBaseModel):
     market_implied_probability: float | None = Field(default=None, ge=0, le=1)
     recommended_action: RecommendedAction
     must_not_trade_reasons: list[str] = Field(default_factory=list)
+    resolution_source: str | None = None
+    resolution_ambiguity: bool = False
 
     @field_validator("uncertainty_notes", "must_not_trade_reasons")
     @classmethod
@@ -156,6 +167,7 @@ class Signal(StrictBaseModel):
     signal_id: str = Field(default_factory=lambda: new_id("signal"))
     brief_id: str = Field(min_length=1)
     market_id: str = Field(min_length=1)
+    strategy_name: str = "prediction_market_edge"
     created_at: datetime = Field(default_factory=utc_now)
     action: SignalAction
     agent_probability: float | None = Field(default=None, ge=0, le=1)
@@ -175,13 +187,23 @@ class RiskDecision(StrictBaseModel):
     created_at: datetime = Field(default_factory=utc_now)
     status: RiskStatus
     reasons: list[str] = Field(min_length=1)
-    max_position_pct: float = Field(default=0.02, ge=0, le=1)
+    max_position_pct: float = Field(default=0.01, ge=0, le=1)
     max_position_usd: float = Field(default=100.0, ge=0)
+    requires_human_approval: bool = True
+    live_trading_allowed: bool = False
     config_snapshot: dict[str, Any] = Field(default_factory=dict)
 
     @property
     def is_approved(self) -> bool:
         return self.status == RiskStatus.APPROVED
+
+    @property
+    def approved(self) -> bool:
+        return self.is_approved
+
+    @property
+    def veto_reasons(self) -> list[str]:
+        return [] if self.is_approved else self.reasons
 
 
 class PaperOrder(StrictBaseModel):
@@ -195,7 +217,7 @@ class PaperOrder(StrictBaseModel):
     limit_price: float = Field(ge=0, le=1)
     fill_price: float = Field(ge=0, le=1)
     fees: float = Field(default=0.0, ge=0)
-    status: OrderStatus = OrderStatus.FILLED
+    status: OrderStatus = OrderStatus.OPEN
     execution_mode: ExecutionMode = ExecutionMode.PAPER
 
     @model_validator(mode="after")

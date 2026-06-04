@@ -11,6 +11,11 @@ from local_market_agent.schemas.models import (
     SignalAction,
 )
 
+ACTIONABLE_PAPER_BUYS = {
+    SignalAction.PAPER_BUY_YES,
+    SignalAction.PAPER_BUY_NO,
+}
+
 
 @dataclass
 class RiskEngine:
@@ -39,8 +44,8 @@ class RiskEngine:
             reasons.append("Derivatives are disabled.")
         if signal.action == SignalAction.PAPER_SELL:
             reasons.append("Shorting is disabled; standalone paper_sell is vetoed.")
-        if signal.action != SignalAction.PAPER_BUY:
-            reasons.append("Only paper_buy signals can be approved for paper orders.")
+        if signal.action not in ACTIONABLE_PAPER_BUYS:
+            reasons.append("Only paper_buy_yes/no signals can be approved for paper orders.")
         if signal.confidence < self.config.min_confidence:
             reasons.append("Signal confidence is below the risk threshold.")
         if signal.evidence_quality < 0.65:
@@ -66,5 +71,7 @@ class RiskEngine:
             reasons=reasons,
             max_position_pct=self.config.max_position_pct,
             max_position_usd=self.config.paper_starting_cash * self.config.max_position_pct,
+            requires_human_approval=self.config.compliance_requires_manual_approval,
+            live_trading_allowed=self.config.live_trading_allowed,
             config_snapshot=self.config.as_dict(),
         )

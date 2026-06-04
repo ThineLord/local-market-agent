@@ -29,7 +29,10 @@ def safe_get_json(url: str, *, headers: dict[str, str] | None = None) -> object:
         response.raise_for_status()
         return response.json()
     except httpx.HTTPStatusError as exc:
-        msg = f"read-only HTTP request failed with status {exc.response.status_code}: {url}"
+        if exc.response.status_code == 429:
+            msg = f"read-only HTTP request was rate limited: {url}"
+        else:
+            msg = f"read-only HTTP request failed with status {exc.response.status_code}: {url}"
         raise RuntimeError(msg) from exc
     except httpx.TimeoutException as exc:
         msg = f"read-only HTTP request timed out: {url}"

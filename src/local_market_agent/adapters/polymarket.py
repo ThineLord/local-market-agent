@@ -12,6 +12,7 @@ class PolymarketAdapter:
     """Read-only public Polymarket metadata adapter."""
 
     BASE_URL = "https://gamma-api.polymarket.com"
+    CLOB_URL = "https://clob.polymarket.com"
 
     def __init__(self, raw_cache_dir: str | Path = "data/raw_cache") -> None:
         self.raw_cache_dir = Path(raw_cache_dir)
@@ -32,6 +33,28 @@ class PolymarketAdapter:
         if isinstance(payload, list):
             return [item for item in payload if isinstance(item, dict)]
         return []
+
+    def fetch_price(self, token_id: str, side: str = "buy") -> float | None:
+        normalized_side = side.lower()
+        if normalized_side not in {"buy", "sell"}:
+            msg = "side must be buy or sell"
+            raise ValueError(msg)
+        url = f"{self.CLOB_URL}/price?token_id={token_id}&side={normalized_side}"
+        payload = safe_get_json(url)
+        cache_json(self.raw_cache_dir, url, payload)
+        if not isinstance(payload, dict):
+            msg = "unexpected Polymarket price response"
+            raise RuntimeError(msg)
+        return _first_probability(payload, ["price"])
+
+    def fetch_orderbook(self, token_id: str) -> dict[str, Any]:
+        url = f"{self.CLOB_URL}/book?token_id={token_id}"
+        payload = safe_get_json(url)
+        cache_json(self.raw_cache_dir, url, payload)
+        if not isinstance(payload, dict):
+            msg = "unexpected Polymarket orderbook response"
+            raise RuntimeError(msg)
+        return payload
 
     def _normalize(self, payload: dict[str, Any]) -> MarketSnapshot:
         market_id = str(payload.get("id") or payload.get("conditionId") or payload.get("slug"))
