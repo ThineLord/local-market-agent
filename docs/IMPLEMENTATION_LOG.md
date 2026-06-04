@@ -128,3 +128,13 @@
 - Safety audit result: fixed one P1 issue where `SQLiteRepository.append_paper_order` could persist a paper order with missing stored signal/risk references if callers bypassed `PaperLedger`.
 - Unresolved issues: remaining issues are P2 review items documented in `docs/reports/module_code_review_report.md`.
 - Next action: keep PR #1 draft for manual review; do not start Phase 7 or live trading.
+
+## P2 reviewability improvements before manual merge
+
+- Status: completed.
+- Files changed: `src/local_market_agent/reporting/daily.py`, `ui/app.py`, `tests/test_daily_report.py`, `tests/test_ui.py`, `docs/reports/module_code_review_report.md`, `docs/IMPLEMENTATION_LOG.md`.
+- Validation commands run: `.venv/bin/ruff check .`, `.venv/bin/pytest`, `LMA_DB_PATH=data/reviewability_cli.sqlite .venv/bin/lma ingest-demo`, `LMA_DB_PATH=data/reviewability_cli.sqlite .venv/bin/lma generate-brief --fixture data/fixtures/demo_market.json`, `LMA_DB_PATH=data/reviewability_cli.sqlite .venv/bin/lma risk-check`, `LMA_DB_PATH=data/reviewability_cli.sqlite .venv/bin/lma paper-log`, `LMA_DB_PATH=data/reviewability_cli.sqlite .venv/bin/lma report-daily`.
+- Test results: Ruff passed; pytest passed with 30 passed and 1 optional network test skipped; offline CLI chain passed on a fresh ignored SQLite DB.
+- Safety audit result: no live trading, Phase 7 automation, secret handling, or order-execution paths added.
+- Unresolved issues: remaining P2 items are simplified strategy EV/cost modeling, JSON-object storage without migrations, mostly happy-path CLI tests, no full browser-level Streamlit regression, and omitted drawdown/Brier/calibration/cash-ledger metrics.
+- Next action: keep PR #1 draft and proceed to manual review.

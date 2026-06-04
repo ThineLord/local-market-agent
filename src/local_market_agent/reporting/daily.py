@@ -27,7 +27,10 @@ class DailyReportService:
             total_fees=total_fees,
             open_positions=len([position for position in positions if position.is_open]),
             orders=len(orders),
-            notes=["Paper trading report only; no live orders were placed."],
+            notes=[
+                "Paper-only report; no live orders were placed.",
+                "`ending_cash` is a mark-to-market paper equity estimate, not cash-accounting or reserved-notional accounting.",
+            ],
         )
         self.repository.save_performance_report(report)
         return report

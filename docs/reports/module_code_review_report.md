@@ -30,6 +30,11 @@ No P0 issues were found.
 
 The implementation is suitable to keep as a draft PR for manual review. It should not be merged until manual review is complete, but no remaining P0/P1 code blockers were identified after the storage relationship fix.
 
+Follow-up reviewability pass:
+
+- Addressed P2: daily report now has direct unit tests for order count, open positions, realized PnL, unrealized PnL, and notes that clarify paper-only mark-to-market/equity semantics rather than cash accounting.
+- Addressed P2: Streamlit now includes an `Audit Chain` page joining brief -> signal -> risk decision -> paper order, with row selection and linked JSON inspection.
+
 ## Validation
 
 After the P1 fix:
@@ -37,6 +42,17 @@ After the P1 fix:
 - `.venv/bin/ruff check .`: passed
 - `.venv/bin/pytest`: 27 passed, 1 optional network test skipped
 - Offline CLI chain with `.venv/bin/lma`: passed
+  - `ingest-demo`
+  - `generate-brief --fixture data/fixtures/demo_market.json`
+  - `risk-check`
+  - `paper-log`
+  - `report-daily`
+
+After the follow-up P2 reviewability pass:
+
+- `.venv/bin/ruff check .`: passed
+- `.venv/bin/pytest`: 30 passed, 1 optional network test skipped
+- Offline CLI chain with `.venv/bin/lma` and fresh ignored `LMA_DB_PATH=data/reviewability_cli.sqlite`: passed
   - `ingest-demo`
   - `generate-brief --fixture data/fixtures/demo_market.json`
   - `risk-check`
@@ -153,13 +169,13 @@ After the P1 fix:
 1. Purpose: aggregates paper positions/orders into a `PerformanceReport`.
 2. Key public functions/classes: `DailyReportService.build_report`.
 3. Data flow in/out: repository orders/positions -> saved `PerformanceReport`.
-4. Safety invariants: report note states paper trading only; no order placement or live controls.
-5. Test coverage: indirectly through CLI and paper ledger tests.
+4. Safety invariants: report notes state paper-only behavior and clarify that `ending_cash` is a mark-to-market paper equity estimate, not cash-accounting or reserved-notional accounting.
+5. Test coverage: `tests/test_daily_report.py` directly verifies order count, open positions, realized PnL, unrealized PnL, saved report output, and paper-only mark-to-market notes; CLI still covers the end-to-end daily command.
 6. Issues found:
    - P0: none.
    - P1: none.
-   - P2: no direct unit test for daily report calculations.
-   - P2: ending cash does not reserve open-position notional, so it is best read as mark-to-market equity rather than cash.
+   - P2 addressed: direct daily report tests were added.
+   - P2 addressed: note text now states mark-to-market paper equity semantics and warns against cash-accounting interpretation.
    - P2: drawdown, hit rate, Brier score, and calibration metrics are not implemented yet.
 7. Code character: scaffold-like report aggregator suitable for MVP demo.
 
@@ -181,15 +197,15 @@ After the P1 fix:
 ## `ui/app.py`
 
 1. Purpose: Streamlit dashboard for local SQLite/fixture data.
-2. Key public functions/classes: top-level Streamlit page handlers and helper `_repo`, `_frame`.
+2. Key public functions/classes: top-level Streamlit page handlers and helper `_repo`, `_frame`, `_audit_chain_rows`.
 3. Data flow in/out: repository data -> tables/JSON in dashboard.
 4. Safety invariants: no live trading buttons, no secret display, settings show only paths, booleans, provider name, and risk config.
-5. Test coverage: smoke-import coverage was run during earlier work; no dedicated UI test file.
+5. Test coverage: `tests/test_ui.py` smoke-loads the Streamlit script and verifies the audit-chain helper returns linked brief, signal, risk decision, and paper order rows.
 6. Issues found:
    - P0: none.
    - P1: none.
-   - P2: no joined brief -> signal -> risk -> paper order detail view.
-   - P2: no automated Streamlit regression test.
+   - P2 addressed: added `Audit Chain` page with joined row display and linked JSON inspection.
+   - P2: no full browser-level Streamlit regression test.
    - P2: table views are functional but sparse.
 7. Code character: scaffold-like dashboard suitable for MVP inspection.
 
@@ -243,11 +259,11 @@ After the P1 fix:
 
 Top P2 items:
 
-1. Daily report lacks direct unit tests and can be misread as cash accounting rather than mark-to-market equity.
-2. Dashboard lacks a joined chain view for brief -> signal -> risk -> paper order.
-3. Strategy EV logic is simplified, especially for NO prices and explicit fee/slippage handling.
-4. Storage remains JSON-object oriented without relational foreign keys or migrations.
-5. CLI and tests are mostly happy-path; failure-path and boundary tests should be expanded before Phase 7.
+1. Strategy EV logic is simplified, especially for NO prices and explicit fee/slippage handling.
+2. Storage remains JSON-object oriented without relational foreign keys or migrations.
+3. CLI and tests are mostly happy-path; failure-path and boundary tests should be expanded before Phase 7.
+4. Dashboard now has an audit-chain helper test, but no full browser-level Streamlit regression test.
+5. Daily reporting still omits drawdown, hit rate, Brier score, calibration metrics, and a true cash/reserved-notional ledger.
 
 ## Recommendation
 
