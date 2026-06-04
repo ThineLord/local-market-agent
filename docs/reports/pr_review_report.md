@@ -62,6 +62,7 @@ The PR branch CI is green, the branch is mergeable, and safety-chain tests cover
 - Network adapter coverage is intentionally optional and not run by default.
 - Schema names intentionally differ from some original master-plan example fields; this is documented in `docs/MASTER_PLAN_ALIGNMENT_REPORT.md`.
 - `OpenAICompatibleProvider` is not integration-tested against LM Studio/Ollama in CI.
+- GitHub Actions emitted a Node.js 20 deprecation annotation for `actions/checkout@v4` and `actions/setup-python@v5`; CI still passes, but workflow action versions should be watched for Node 24 compatibility.
 
 ## Recommended Merge Readiness
 
