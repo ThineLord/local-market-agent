@@ -300,3 +300,13 @@
 - Safety audit result: Phase 7E was audit/reporting only. No strategy implementation, broker API, live order code, real-money execution, scheduler, daemon, autostart, Phase 8 integration, risk engine redesign, risk gate redesign, paper ledger redesign, leverage, derivatives, shorting, withdrawal, or direct LLM-to-order path was added.
 - Conclusion: current `PredictionMarketEdgeStrategy` is safe enough for paper-only workflow smoke tests but not suitable for real profitability testing. Its weakest link is the uncalibrated `estimated_probability` input; current decision value is MVP placeholder logic rather than evidence-backed alpha.
 - Next action: write a Strategy v2 evaluation spec before implementation; do not start Phase 8, broker integration, live trading, scheduler, daemon, or threshold tuning from the five-day fixture.
+
+## Phase 7F - Strategy v2 Evaluation Specification
+
+- Status: completed.
+- Files changed: `docs/reports/strategy_v2_evaluation_spec.md`, `docs/IMPLEMENTATION_LOG.md`.
+- Validation commands run: `PYTHONPATH=src .venv/bin/ruff check .`, `PYTHONPATH=src .venv/bin/pytest`.
+- Test results: Ruff passed; pytest passed with 97 passed and 1 optional network test skipped.
+- Safety audit result: Phase 7F was documentation/specification only. No Strategy v2 implementation, production strategy change, threshold tuning, broker API, live order code, real-money execution, scheduler, daemon, autostart, Phase 8 integration, risk gate weakening, leverage, derivatives, shorting, withdrawal, or direct LLM-to-order path was added.
+- Conclusion: Strategy v2 evaluation must first prove structured forecast completeness, calibration, benchmark-relative paper outcomes, replayability, and safety invariants against Strategy v1 and required baselines before any Strategy v2 candidate policy is implemented.
+- Next action: PR-V2-1 forecast assessment schema/evaluator only; do not start Strategy v2 policy implementation, Phase 8, broker integration, live trading, scheduler, daemon, or threshold tuning from the five-row fixture.
