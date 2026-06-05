@@ -10,6 +10,10 @@ import typer
 from local_market_agent.adapters import FixtureAdapter
 from local_market_agent.agents import Reporter, ResearchBriefGenerator
 from local_market_agent.config import Settings, load_settings
+from local_market_agent.data import (
+    validate_historical_dataset,
+    write_historical_validation_reports,
+)
 from local_market_agent.eval import (
     DEFAULT_QWEN_BASE_URL,
     DEFAULT_QWEN_MODEL,
@@ -345,6 +349,41 @@ def market_data_audit_command(
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.echo(json.dumps(audit, sort_keys=True))
+
+
+@app.command("validate-historical-dataset")
+def validate_historical_dataset_command(
+    historical_file: Annotated[
+        Path,
+        typer.Option("--historical-file", help="Local Phase 7G JSONL dataset to validate."),
+    ],
+    output_dir: Annotated[
+        Path,
+        typer.Option(help="Local Phase 7G validation report output directory."),
+    ] = Path("data/reports/historical_dataset"),
+) -> None:
+    try:
+        result = validate_historical_dataset(historical_file)
+        artifacts = write_historical_validation_reports(result, output_dir)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(
+        json.dumps(
+            {
+                "valid": result.valid,
+                "profile": result.profile,
+                "acceptance_candidate": result.acceptance_candidate,
+                "paper_pnl_allowed": result.paper_pnl_allowed,
+                "row_count": result.row_count,
+                "market_count": result.market_count,
+                "error_count": result.error_count,
+                "warning_count": result.warning_count,
+                "json_path": str(artifacts.json_path),
+                "markdown_path": str(artifacts.markdown_path),
+            },
+            sort_keys=True,
+        )
+    )
 
 
 @app.command("phase7-run-daily")
