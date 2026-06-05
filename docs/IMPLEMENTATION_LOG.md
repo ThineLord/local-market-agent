@@ -208,3 +208,13 @@
 - Safety audit result: audit-only docs change; no production code, broker API, live order code, scheduler, daemon, Phase 8 integration, new strategy logic, new risk gate, or direct LLM-to-order path was added.
 - Unresolved issues: Phase 7 is core-function complete for PR-1 through PR-5, but original-plan completion remains partial for metrics coverage, historical replay, failed/skipped run accounting, report immutability, and 30/60-day operational readiness.
 - Next action: decide whether to accept Phase 7 with documented gaps or open a paper-only Phase 7 hardening task before declaring the phase complete.
+
+## Phase 7 PR-H1 - Replay and Metrics Hardening
+
+- Status: completed.
+- Files changed: Phase 7 runner, manifest/replay services, manifest storage, Phase 7 metrics calculator, daily report metrics section, CLI replay command, schema/storage/runner/report/CLI/replay/metrics tests, `docs/PHASE_7_PR_H1_HARDENING.md`, `docs/IMPLEMENTATION_LOG.md`.
+- Validation commands run: `.venv/bin/ruff check .`, `PYTHONPATH=src .venv/bin/pytest`, `PYTHONPATH=src .venv/bin/lma phase7-run-daily --db "$tmpdir/phase7-h1-smoke.sqlite" --report-dir "$tmpdir/reports" --no-require-manual-approval`, `PYTHONPATH=src .venv/bin/lma phase7-replay --db "$tmpdir/phase7-h1-replay.sqlite" --run-id "$run_id"`.
+- Test results: Ruff passed; pytest passed with 62 passed and 1 optional network test skipped; offline Phase 7 run smoke passed with `status=completed`, immutable report path, manifest id, and report checksum; replay smoke passed with `ok=true` and checksum validation.
+- Safety audit result: PR-H1 remained paper-only and local; replay and metrics are read-only, failed runs persist audit metadata, and no broker API, live order code, scheduler, daemon, Phase 8 integration, benchmark system, strategy redesign, dashboard redesign, leverage, shorting, withdrawal, or direct LLM-to-order path was added.
+- Unresolved issues: Sharpe ratio, benchmark comparison, real scheduler/daemon, Phase 8 broker integration, and dashboard redesign remain out of scope; skipped-run accounting is still not a first-class status beyond persisted failed/completed/pending/rejected/halted run records.
+- Next action: review PR-H1 hardening and decide whether remaining documented gaps are acceptable for declaring Phase 7 above the audit target.

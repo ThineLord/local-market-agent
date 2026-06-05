@@ -86,12 +86,16 @@ def test_phase7_daily_report_writes_markdown_artifact(repo, brief, snapshot, tmp
     assert "## Exposure" in markdown
     assert "## Risk Gate Decisions" in markdown
     assert "## Risk Gate Rejection And Halt Reasons" in markdown
+    assert "## Phase 7 Metrics" in markdown
     assert "## Operational Warnings" in markdown
     assert "2026-06-05" in markdown
     assert order.order_id in markdown
     assert closed.position_id in markdown
     assert f"{closed.realized_pnl:.4f}" in markdown
     assert f"{portfolio_snapshot.unrealized_pnl:.4f}" in markdown
+    assert "Equity curve points" in markdown
+    assert "Max drawdown" in markdown
+    assert "Win rate" in markdown
     assert "Market data is stale for paper risk gate evaluation." in markdown
     assert "Daily drawdown circuit breaker is active." in markdown
     assert "At least one risk gate decision rejected a paper order intent." in markdown
@@ -113,3 +117,4 @@ def test_phase7_daily_report_warns_when_local_data_is_missing(repo, tmp_path):
     assert "_No open paper positions._" in markdown
     assert "_No paper orders._" in markdown
     assert "_No paper fills._" in markdown
+    assert "## Phase 7 Metrics" in markdown

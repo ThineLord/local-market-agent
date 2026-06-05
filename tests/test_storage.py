@@ -8,6 +8,7 @@ from local_market_agent.schemas.models import (
     OrderSide,
     PaperFill,
     PaperOrder,
+    Phase7RunManifest,
     Phase7RunRecord,
     Phase7RunStatus,
     PortfolioSnapshot,
@@ -122,6 +123,19 @@ def test_storage_roundtrip(repo, snapshot, evidence):
     )
     repo.save_phase7_run_record(run_record)
     assert repo.load_phase7_run_record(run_record.run_id) == run_record
+
+    manifest = Phase7RunManifest(
+        run_id=run_record.run_id,
+        code_version="test-commit",
+        configuration_snapshot={"risk_gates": {"require_manual_approval": False}},
+        cli_arguments={"command": "phase7-run-daily"},
+        fixture_paths={"market_fixture": "data/fixtures/demo_market.json"},
+        report_path=run_record.report_path,
+        report_checksum="abc123",
+    )
+    repo.save_phase7_run_manifest(manifest)
+    assert repo.load_phase7_run_manifest(run_record.run_id) == manifest
+    assert repo.list_phase7_run_manifests(limit=1)[0] == manifest
 
 
 def test_storage_rejects_paper_order_without_saved_relationships(repo, brief):

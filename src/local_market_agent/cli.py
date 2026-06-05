@@ -10,7 +10,7 @@ from local_market_agent.adapters import FixtureAdapter
 from local_market_agent.agents import Reporter, ResearchBriefGenerator
 from local_market_agent.config import Settings, load_settings
 from local_market_agent.llm import MockLLMProvider, OpenAICompatibleProvider
-from local_market_agent.operations import Phase7DailyRunner
+from local_market_agent.operations import Phase7DailyRunner, Phase7ReplayService
 from local_market_agent.paper import PaperLedger
 from local_market_agent.reporting import DailyReportService
 from local_market_agent.risk import RiskEngine
@@ -286,6 +286,17 @@ def phase7_run_daily(
     ).run(
         dry_run=dry_run,
         require_manual_approval=require_manual_approval,
+        cli_arguments={
+            "source": "cli",
+            "command": "phase7-run-daily",
+            "fixture": str(fixture),
+            "evidence": str(evidence),
+            "db": str(settings.db_path),
+            "report_dir": str(report_dir),
+            "dry_run": dry_run,
+            "require_manual_approval": require_manual_approval,
+            "refresh_market_timestamp": refresh_market_timestamp,
+        },
     )
     typer.echo(
         json.dumps(
@@ -297,11 +308,26 @@ def phase7_run_daily(
                 "paper_order_id": record.paper_order_id,
                 "risk_gate_decision_id": record.risk_gate_decision_id,
                 "report_path": record.report_path,
+                "manifest_id": record.manifest_id,
+                "report_checksum": record.metadata.get("report_checksum"),
                 "db_path": str(settings.db_path),
             },
             sort_keys=True,
         )
     )
+
+
+@app.command("phase7-replay")
+def phase7_replay(
+    run_id: Annotated[str, typer.Option("--run-id", help="Phase 7 run id to replay.")],
+    db: Annotated[Path | None, typer.Option(help="SQLite database path.")] = None,
+) -> None:
+    settings = _settings(db)
+    repo = _repository(settings)
+    result = Phase7ReplayService(repo).replay(run_id)
+    typer.echo(json.dumps(result.as_dict(), sort_keys=True))
+    if not result.ok:
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

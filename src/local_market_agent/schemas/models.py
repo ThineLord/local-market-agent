@@ -401,6 +401,7 @@ class Phase7RunRecord(StrictBaseModel):
     paper_order_id: str | None = None
     portfolio_snapshot_id: str | None = None
     report_path: str | None = None
+    manifest_id: str | None = None
     reasons: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     execution_mode: ExecutionMode = ExecutionMode.PAPER
@@ -409,6 +410,26 @@ class Phase7RunRecord(StrictBaseModel):
     def validate_paper_only(self) -> Phase7RunRecord:
         if self.execution_mode != ExecutionMode.PAPER:
             msg = "phase 7 run records cannot use live execution mode"
+            raise ValueError(msg)
+        return self
+
+
+class Phase7RunManifest(StrictBaseModel):
+    run_id: str = Field(min_length=1)
+    created_at: datetime = Field(default_factory=utc_now)
+    code_version: str | None = None
+    configuration_snapshot: dict[str, Any] = Field(default_factory=dict)
+    cli_arguments: dict[str, Any] = Field(default_factory=dict)
+    fixture_paths: dict[str, str] = Field(default_factory=dict)
+    report_path: str | None = None
+    report_checksum: str | None = None
+    execution_mode: ExecutionMode = ExecutionMode.PAPER
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_paper_only(self) -> Phase7RunManifest:
+        if self.execution_mode != ExecutionMode.PAPER:
+            msg = "phase 7 run manifests cannot use live execution mode"
             raise ValueError(msg)
         return self
 

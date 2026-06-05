@@ -43,8 +43,18 @@ def test_phase7_runner_successful_approved_paper_run(tmp_path):
     assert record.status == Phase7RunStatus.COMPLETED
     assert record.paper_order_id is not None
     assert record.report_path is not None
+    assert record.manifest_id == record.run_id
     assert Path(record.report_path).exists()
+    assert Path(record.report_path).name == f"phase7_daily_report_{record.run_id}.md"
     assert repo.load_phase7_run_record(record.run_id) == record
+    manifest = repo.load_phase7_run_manifest(record.run_id)
+    assert manifest is not None
+    assert manifest.run_id == record.run_id
+    assert manifest.report_path == record.report_path
+    assert manifest.report_checksum == record.metadata["report_checksum"]
+    assert manifest.cli_arguments["source"] == "runner"
+    assert manifest.fixture_paths["market_fixture"] == "data/fixtures/demo_market.json"
+    assert manifest.configuration_snapshot["allow_live_orders"] is False
     assert len(repo.list_paper_orders()) == 1
     assert len(repo.list_paper_fills()) == 1
     assert len(repo.list_positions()) == 1
@@ -106,5 +116,33 @@ def test_phase7_runner_records_are_paper_only(tmp_path):
 
     assert record.execution_mode == ExecutionMode.PAPER
     assert record.metadata["live_trading_allowed"] is False
+    assert repo.load_phase7_run_manifest(record.run_id).execution_mode == ExecutionMode.PAPER
     assert repo.list_paper_orders()[0].execution_mode == ExecutionMode.PAPER
     assert repo.list_risk_gate_decisions()[0].execution_mode == ExecutionMode.PAPER
+
+
+def test_phase7_runner_persists_failed_run_record(tmp_path):
+    settings = _settings(tmp_path)
+    repo = SQLiteRepository(settings.db_path)
+    runner = Phase7DailyRunner(
+        repository=repo,
+        settings=settings,
+        market_fixture=tmp_path / "missing_market.json",
+        report_dir=tmp_path / "reports",
+    )
+
+    record = runner.run(now=NOW)
+
+    assert record.status == Phase7RunStatus.FAILED
+    assert record.manifest_id == record.run_id
+    assert record.report_path is None
+    assert "No such file" in record.metadata["error_message"]
+    assert repo.load_phase7_run_record(record.run_id) == record
+    manifest = repo.load_phase7_run_manifest(record.run_id)
+    assert manifest is not None
+    assert manifest.report_path is None
+    assert manifest.report_checksum is None
+    assert manifest.metadata["status"] == "failed"
+    assert manifest.metadata["error_type"] == "FileNotFoundError"
+    assert len(repo.list_paper_orders()) == 0
+    assert len(repo.list_positions()) == 0

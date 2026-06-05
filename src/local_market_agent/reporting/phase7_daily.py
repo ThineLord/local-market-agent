@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from local_market_agent.reporting.phase7_metrics import Phase7Metrics, Phase7MetricsCalculator
 from local_market_agent.schemas import (
     PaperFill,
     PaperOrder,
@@ -46,6 +47,7 @@ class Phase7DailyReportGenerator:
         orders = self.repository.list_paper_orders()
         fills = self.repository.list_paper_fills()
         risk_gate_decisions = self.repository.list_risk_gate_decisions()
+        metrics = Phase7MetricsCalculator(self.repository).compute()
         warnings = _operational_warnings(latest_snapshot, orders, fills, risk_gate_decisions)
         markdown = self.build_markdown(
             report_date=report_date,
@@ -55,6 +57,7 @@ class Phase7DailyReportGenerator:
             orders=orders,
             fills=fills,
             risk_gate_decisions=risk_gate_decisions,
+            metrics=metrics,
             warnings=warnings,
         )
         output.write_text(markdown, encoding="utf-8")
@@ -76,6 +79,7 @@ class Phase7DailyReportGenerator:
         orders: list[PaperOrder],
         fills: list[PaperFill],
         risk_gate_decisions: list[RiskGateDecision],
+        metrics: Phase7Metrics,
         warnings: list[str],
     ) -> str:
         open_positions = [position for position in positions if position.is_open]
@@ -142,6 +146,10 @@ class Phase7DailyReportGenerator:
             "## Risk Gate Rejection And Halt Reasons",
             "",
             _risk_gate_reasons_section(risk_gate_decisions),
+            "",
+            "## Phase 7 Metrics",
+            "",
+            _metrics_section(metrics),
             "",
             "## Operational Warnings",
             "",
@@ -291,6 +299,26 @@ def _risk_gate_reasons_section(decisions: list[RiskGateDecision]) -> str:
     return "\n".join(reasons)
 
 
+def _metrics_section(metrics: Phase7Metrics) -> str:
+    latest_equity = metrics.equity_curve[-1] if metrics.equity_curve else None
+    return _table(
+        ["Metric", "Value"],
+        [
+            ["Equity curve points", str(len(metrics.equity_curve))],
+            [
+                "Latest equity value",
+                _money(latest_equity.portfolio_value) if latest_equity is not None else "n/a",
+            ],
+            ["Win rate", _optional_pct(metrics.win_rate)],
+            ["Profit factor", _optional_number(metrics.profit_factor)],
+            ["Max drawdown", _pct(metrics.max_drawdown)],
+            ["Run success rate", _optional_pct(metrics.run_success_rate)],
+            ["Total Phase 7 runs", str(metrics.total_runs)],
+            ["Failed Phase 7 runs", str(metrics.failed_runs)],
+        ],
+    )
+
+
 def _warnings_section(warnings: list[str]) -> str:
     if not warnings:
         return "_No operational warnings._"
@@ -379,3 +407,15 @@ def _number(value: float) -> str:
 
 def _pct(value: float) -> str:
     return f"{value * 100:.2f}%"
+
+
+def _optional_pct(value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    return _pct(value)
+
+
+def _optional_number(value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    return _number(value)

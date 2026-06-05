@@ -10,6 +10,7 @@ from local_market_agent.schemas.models import (
     PaperFill,
     PaperOrder,
     PaperOrderIntent,
+    Phase7RunManifest,
     Phase7RunRecord,
     Phase7RunStatus,
     PortfolioSnapshot,
@@ -184,5 +185,13 @@ def test_phase7_run_record_rejects_live_execution_mode(brief):
             report_date=brief.created_at,
             status=Phase7RunStatus.COMPLETED,
             market_id=brief.market_id,
+            execution_mode=ExecutionMode.LIVE,
+        )
+
+
+def test_phase7_run_manifest_rejects_live_execution_mode():
+    with pytest.raises(ValidationError):
+        Phase7RunManifest(
+            run_id="phase7_run_test",
             execution_mode=ExecutionMode.LIVE,
         )

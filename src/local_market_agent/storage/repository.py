@@ -13,6 +13,7 @@ from local_market_agent.schemas import (
     PaperFill,
     PaperOrder,
     PerformanceReport,
+    Phase7RunManifest,
     Phase7RunRecord,
     PortfolioSnapshot,
     Position,
@@ -38,6 +39,7 @@ class SQLiteRepository:
         "paper_fills": "fill_id",
         "positions": "position_id",
         "portfolio_snapshots": "snapshot_id",
+        "phase7_run_manifests": "run_id",
         "phase7_run_records": "run_id",
         "performance_reports": "report_id",
     }
@@ -301,6 +303,15 @@ class SQLiteRepository:
         self, market_id: str | None = None, limit: int | None = None
     ) -> list[Phase7RunRecord]:
         return self._list("phase7_run_records", Phase7RunRecord, market_id, limit)
+
+    def save_phase7_run_manifest(self, manifest: Phase7RunManifest) -> None:
+        self._save("phase7_run_manifests", "run_id", manifest)
+
+    def load_phase7_run_manifest(self, run_id: str) -> Phase7RunManifest | None:
+        return self._load("phase7_run_manifests", "run_id", run_id, Phase7RunManifest)
+
+    def list_phase7_run_manifests(self, limit: int | None = None) -> list[Phase7RunManifest]:
+        return self._list("phase7_run_manifests", Phase7RunManifest, None, limit)
 
     def save_performance_report(self, report: PerformanceReport) -> None:
         self._save("performance_reports", "report_id", report)
