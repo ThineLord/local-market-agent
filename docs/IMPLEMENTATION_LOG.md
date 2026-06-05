@@ -228,3 +228,13 @@
 - Safety audit result: audit-only docs change; no production code, broker API, live order code, real-money execution, scheduler, daemon, autostart, Phase 8 integration, credential/wallet/withdrawal path, strategy redesign, or direct LLM-to-order path was added.
 - Unresolved issues: skipped-run accounting, Sharpe ratio, benchmark comparison, and empirical 30-day/60-day operation proof remain accepted non-blocking gaps.
 - Next action: begin supervised paper-only Phase 7 operation validation, or archive Phase 7 as complete with accepted non-blocking gaps.
+
+## Phase 7B PR-S1 - Historical Sandbox Validation
+
+- Status: completed.
+- Files changed: `src/local_market_agent/operations/phase7_sandbox.py`, Phase 7 sandbox CLI wiring, deterministic model context, refreshed snapshot run ids, sandbox tests, `docs/PHASE_7B_SANDBOX_VALIDATION.md`, `docs/IMPLEMENTATION_LOG.md`.
+- Validation commands run: `.venv/bin/ruff check .`, `PYTHONPATH=src .venv/bin/pytest`, `PYTHONPATH=src .venv/bin/lma phase7-sandbox-run --days 7 --db "$tmpdir/phase7b-smoke.sqlite" --report-dir "$tmpdir/reports" --no-require-manual-approval --replay-sample-size 2`, `PYTHONPATH=src .venv/bin/lma phase7-replay --db "$tmpdir/phase7b-smoke.sqlite" --run-id phase7_run_d8d47277dd5c59c84df23117cbdf349f`.
+- Test results: Ruff passed; pytest passed with 67 passed and 1 optional network test skipped; offline 7-day sandbox smoke passed with 5 completed, 2 rejected, 0 failed, replay sample mutation checks false, and summary path `phase7_sandbox_summary_phase7b_2ae0d9c9f45d_2026-05-30_2026-06-05.json`; replay smoke passed with `ok=true` and matching report checksum.
+- Safety audit result: PR-S1 remains paper-only, local-only, deterministic, and replayable; no broker API, live order code, scheduler, daemon, autostart, Phase 8 integration, strategy redesign, benchmark comparison, leverage, derivatives, shorting, withdrawal, or direct LLM-to-order path was added.
+- Unresolved issues: sandbox metrics use local fixture data only; win rate and profit factor remain `null` unless generated positions are closed in the paper ledger; no Sharpe ratio or benchmark comparison was added.
+- Next action: review PR-S1; do not start Phase 8, broker integration, live trading, or scheduler work.

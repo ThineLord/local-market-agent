@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 from typing import Annotated
 
@@ -10,7 +11,11 @@ from local_market_agent.adapters import FixtureAdapter
 from local_market_agent.agents import Reporter, ResearchBriefGenerator
 from local_market_agent.config import Settings, load_settings
 from local_market_agent.llm import MockLLMProvider, OpenAICompatibleProvider
-from local_market_agent.operations import Phase7DailyRunner, Phase7ReplayService
+from local_market_agent.operations import (
+    Phase7DailyRunner,
+    Phase7ReplayService,
+    Phase7SandboxRunner,
+)
 from local_market_agent.paper import PaperLedger
 from local_market_agent.reporting import DailyReportService
 from local_market_agent.risk import RiskEngine
@@ -328,6 +333,98 @@ def phase7_replay(
     typer.echo(json.dumps(result.as_dict(), sort_keys=True))
     if not result.ok:
         raise typer.Exit(1)
+
+
+@app.command("phase7-sandbox-run")
+def phase7_sandbox_run(
+    fixture: Annotated[Path, typer.Option(help="Market fixture path.")] = Path(
+        "data/fixtures/demo_market.json"
+    ),
+    evidence: Annotated[Path, typer.Option(help="Evidence fixture path.")] = Path(
+        "data/fixtures/demo_evidence.json"
+    ),
+    db: Annotated[Path | None, typer.Option(help="SQLite database path.")] = None,
+    report_dir: Annotated[Path, typer.Option(help="Local report output directory.")] = Path(
+        "data/reports"
+    ),
+    summary_dir: Annotated[
+        Path | None,
+        typer.Option(help="Local sandbox summary output directory. Defaults to report dir."),
+    ] = None,
+    days: Annotated[
+        int | None,
+        typer.Option(help="Number of historical fixture days to simulate."),
+    ] = None,
+    start_date: Annotated[
+        str | None,
+        typer.Option(help="Inclusive sandbox start date in YYYY-MM-DD format."),
+    ] = None,
+    end_date: Annotated[
+        str | None,
+        typer.Option(help="Inclusive sandbox end date in YYYY-MM-DD format."),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(help="Evaluate sandbox runs without creating paper positions."),
+    ] = False,
+    require_manual_approval: Annotated[
+        bool | None,
+        typer.Option(
+            "--require-manual-approval/--no-require-manual-approval",
+            help="Override Phase 7 paper risk gate manual approval mode for sandbox runs.",
+        ),
+    ] = None,
+    refresh_market_timestamp: Annotated[
+        bool,
+        typer.Option(
+            "--refresh-market-timestamp/--keep-fixture-timestamp",
+            help="Refresh fixture market data timestamp to each simulated run time.",
+        ),
+    ] = True,
+    replay_sample_size: Annotated[
+        int,
+        typer.Option(help="Number of generated runs to replay-validate in the summary."),
+    ] = 1,
+    sandbox_id: Annotated[
+        str | None,
+        typer.Option(help="Optional deterministic sandbox id/seed."),
+    ] = None,
+) -> None:
+    settings = _settings(db)
+    repo = _repository(settings)
+    try:
+        parsed_start_date = _parse_cli_date(start_date, "--start-date")
+        parsed_end_date = _parse_cli_date(end_date, "--end-date")
+        result = Phase7SandboxRunner(
+            repository=repo,
+            settings=settings,
+            market_fixture=fixture,
+            evidence_fixture=evidence,
+            report_dir=report_dir,
+            summary_dir=summary_dir,
+            refresh_market_timestamp=refresh_market_timestamp,
+        ).run(
+            start_date=parsed_start_date,
+            end_date=parsed_end_date,
+            days=days,
+            dry_run=dry_run,
+            require_manual_approval=require_manual_approval,
+            replay_sample_size=replay_sample_size,
+            sandbox_id=sandbox_id,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(json.dumps(result.summary, sort_keys=True))
+
+
+def _parse_cli_date(value: str | None, option_name: str) -> date | None:
+    if value is None:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        msg = f"{option_name} must use YYYY-MM-DD format"
+        raise typer.BadParameter(msg) from exc
 
 
 if __name__ == "__main__":

@@ -1,19 +1,54 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from enum import StrEnum
+from hashlib import sha256
 from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+_ID_SEED: ContextVar[str | None] = ContextVar("lma_id_seed", default=None)
+_ID_COUNTERS: ContextVar[dict[str, int] | None] = ContextVar("lma_id_counters", default=None)
+_UTC_NOW: ContextVar[datetime | None] = ContextVar("lma_utc_now", default=None)
+
 
 def utc_now() -> datetime:
+    override = _UTC_NOW.get()
+    if override is not None:
+        return override
     return datetime.now(UTC)
 
 
 def new_id(prefix: str) -> str:
+    seed = _ID_SEED.get()
+    if seed is not None:
+        counters = _ID_COUNTERS.get()
+        if counters is None:
+            counters = {}
+            _ID_COUNTERS.set(counters)
+        counters[prefix] = counters.get(prefix, 0) + 1
+        digest = sha256(f"{seed}:{prefix}:{counters[prefix]}".encode()).hexdigest()[:32]
+        return f"{prefix}_{digest}"
     return f"{prefix}_{uuid4().hex}"
+
+
+@contextmanager
+def deterministic_model_context(seed: str, now: datetime) -> Iterator[None]:
+    """Make model ids and default timestamps deterministic within a local scope."""
+    now = now.replace(tzinfo=UTC) if now.tzinfo is None else now.astimezone(UTC)
+    seed_token = _ID_SEED.set(seed)
+    counter_token = _ID_COUNTERS.set({})
+    now_token = _UTC_NOW.set(now)
+    try:
+        yield
+    finally:
+        _UTC_NOW.reset(now_token)
+        _ID_COUNTERS.reset(counter_token)
+        _ID_SEED.reset(seed_token)
 
 
 class StrictBaseModel(BaseModel):

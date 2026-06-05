@@ -247,7 +247,7 @@ class Phase7DailyRunner:
         snapshot = FixtureAdapter(self.market_fixture, self.evidence_fixture).fetch_snapshot()
         if not self.refresh_market_timestamp:
             return snapshot
-        return snapshot.model_copy(update={"as_of": now})
+        return snapshot.model_copy(update={"snapshot_id": new_id("snapshot"), "as_of": now})
 
     def _evaluate_risk_gates(
         self,
