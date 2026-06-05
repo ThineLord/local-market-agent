@@ -346,3 +346,15 @@
 - Safety audit result: PR-V2-3 remained paper-only, local-only, and offline-evaluation-first. It added no Phase 8, broker API, live order code, real-money execution, scheduler, daemon, autostart, production replacement of Strategy v1, risk engine redesign, risk gate redesign, paper ledger mutation, threshold tuning, leverage, derivatives, shorting, withdrawal, or direct LLM-to-order path.
 - Conclusion: Strategy v2 candidate is now available for offline comparison only; Phase 7 daily runner remains on Strategy v1.
 - Next action: PR-V2-4 comparison report and acceptance gate; do not start Phase 8, broker integration, live trading, scheduler, daemon, or production replacement work.
+
+## PR-V2-4 - Strategy v2 Comparison Report And Acceptance Gate
+
+- Status: completed.
+- Files changed: Strategy offline evaluation acceptance gate, CLI gate summary output, focused offline gate tests, `docs/PHASE_V2_PR_4_ACCEPTANCE_GATE.md`, and `docs/IMPLEMENTATION_LOG.md`.
+- Validation commands run: `PYTHONPATH=src .venv/bin/pytest tests/test_strategy_eval_offline.py -q`, `PYTHONPATH=src .venv/bin/ruff check .`, `PYTHONPATH=src .venv/bin/pytest`, `PYTHONPATH=src .venv/bin/lma strategy-eval-offline --historical-file data/fixtures/phase7_historical_5d.jsonl --output-dir data/reports/strategy_eval`.
+- Test results: focused offline gate tests passed with 16 passed; ruff passed; full pytest passed with 132 passed and 1 optional network test skipped.
+- Offline smoke result: generated reports under `data/reports/strategy_eval/`; baselines included `strategy_v2_candidate`, dataset classification remained `fixture_smoke`, `gate_status=not_applicable`, failed gates included the minimum sample-size requirements, and `superiority_claim_allowed=false`.
+- Acceptance gate result: JSON reports now include a top-level `acceptance_gate` object with gate status, failed and warning gates, metric deltas, Strategy v1/v2 summaries, baseline summaries, and recommendation; Markdown reports now include a Strategy v2 acceptance verdict section.
+- Safety audit result: PR-V2-4 remained paper-only, local-only, and evaluation-only. It added no Phase 8, broker API, live order code, real-money execution, scheduler, daemon, autostart, production replacement of Strategy v1, new Strategy v2 policy logic, risk engine redesign, risk gate redesign, paper ledger mutation, data downloader, threshold tuning, leverage, derivatives, shorting, withdrawal, or direct LLM-to-order path.
+- Conclusion: Strategy v2 superiority claims are now explicitly blocked unless dataset, forecast-quality, paper-outcome, activity, safety, and replay gate checks pass. The five-row fixture remains smoke-only and cannot pass acceptance.
+- Next action: collect or curate a larger local historical dataset before attempting acceptance evaluation; do not start Phase 8, broker integration, live trading, scheduler, daemon, or production replacement work.

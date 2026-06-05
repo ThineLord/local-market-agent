@@ -855,6 +855,7 @@ def strategy_eval_offline(
         raise typer.BadParameter(str(exc)) from exc
 
     dataset = result.report["dataset"]
+    acceptance_gate = result.report["acceptance_gate"]
     typer.echo(
         json.dumps(
             {
@@ -868,7 +869,13 @@ def strategy_eval_offline(
                 "acceptance_evaluation_eligible": dataset[
                     "acceptance_evaluation_eligible"
                 ],
-                "superiority_claim_allowed": dataset["superiority_claim_allowed"],
+                "gate_status": acceptance_gate["gate_status"],
+                "superiority_claim_allowed": acceptance_gate[
+                    "superiority_claim_allowed"
+                ],
+                "failed_gates": acceptance_gate["failed_gates"],
+                "warning_gates": acceptance_gate["warning_gates"],
+                "recommendation": acceptance_gate["recommendation"],
                 "baselines": sorted(result.report["baselines"]),
             },
             sort_keys=True,

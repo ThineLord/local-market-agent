@@ -62,6 +62,15 @@ SAMPLE_SIZE_TARGETS = {
 DEFAULT_RANDOM_SEED = 20260605
 LOG_LOSS_EPSILON = 1e-6
 PAPER_UNIT_QUANTITY = 1.0
+BRIER_IMPROVEMENT_THRESHOLD = 0.01
+MIN_STRUCTURED_PROBABILITY_COMPLETENESS = 0.95
+MIN_ABSTENTION_RATE = 0.20
+MAX_ABSTENTION_RATE = 0.90
+MAX_LARGE_BUCKET_CALIBRATION_GAP = 0.20
+MIN_LARGE_BUCKET_ROWS = 20
+GATE_PASS = "pass"
+GATE_FAIL = "fail"
+GATE_NOT_APPLICABLE = "not_applicable"
 
 
 @dataclass(frozen=True)
@@ -109,9 +118,22 @@ def run_strategy_offline_evaluation(
         market_outcomes=market_outcomes,
         baselines=baselines,
     )
+    safety_summary = _safety_summary()
+    acceptance_gate = evaluate_strategy_acceptance_gate(
+        dataset_summary=dataset_summary,
+        baselines=baselines,
+        safety=safety_summary,
+    )
+    dataset_summary["superiority_claim_allowed"] = acceptance_gate[
+        "superiority_claim_allowed"
+    ]
+    dataset_summary["superiority_claim"] = acceptance_gate["recommendation"]
+    safety_summary["superiority_claim_allowed"] = acceptance_gate[
+        "superiority_claim_allowed"
+    ]
     report = {
         "report_id": report_id,
-        "phase": "PR-V2-3",
+        "phase": "PR-V2-4",
         "created_at": datetime.now(UTC).isoformat(),
         "historical_file": str(dataset.path),
         "random_seed": random_seed,
@@ -125,20 +147,8 @@ def run_strategy_offline_evaluation(
         },
         "dataset": dataset_summary,
         "baselines": baselines,
-        "safety": {
-            "paper_only": True,
-            "local_only": True,
-            "evaluation_only": True,
-            "can_create_orders": False,
-            "mutates_paper_trading_state": False,
-            "strategy_v2_candidate_policy_included": True,
-            "strategy_v2_production_enabled": False,
-            "phase8_started": False,
-            "live_trading_added": False,
-            "scheduler_added": False,
-            "direct_llm_to_order_path": False,
-            "superiority_claim_allowed": dataset_summary["superiority_claim_allowed"],
-        },
+        "acceptance_gate": acceptance_gate,
+        "safety": safety_summary,
     }
 
     json_path = output_root / f"{report_id}.json"
@@ -152,6 +162,108 @@ def run_strategy_offline_evaluation(
         json_checksum=_file_checksum(json_path),
         markdown_checksum=_file_checksum(markdown_path),
     )
+
+
+def evaluate_strategy_acceptance_gate(
+    *,
+    dataset_summary: dict[str, Any],
+    baselines: dict[str, dict[str, Any]],
+    safety: dict[str, Any],
+) -> dict[str, Any]:
+    failed_gates: list[str] = []
+    warning_gates: list[str] = []
+    gate_checks: dict[str, dict[str, Any]] = {}
+    dataset_label = str(dataset_summary["classification"])
+    dataset_preconditions_failed = _dataset_preconditions_failed(dataset_summary)
+
+    for gate_name, gate in dataset_summary["sample_size_gates"].items():
+        _record_gate(
+            gate_checks,
+            failed_gates,
+            name=f"dataset.{gate_name}",
+            passed=bool(gate["passed"]),
+            observed=gate["observed"],
+            required=gate["required"],
+            reason="dataset minimum requirement",
+        )
+
+    v1 = baselines[BASELINE_STRATEGY_V1]
+    v2 = baselines[BASELINE_STRATEGY_V2]
+    market = baselines[BASELINE_MARKET_IMPLIED]
+    metric_deltas = _metric_deltas(strategy_v1=v1, strategy_v2=v2, market=market)
+
+    metric_failures = _forecast_quality_gate_failures(
+        strategy_v1=v1,
+        strategy_v2=v2,
+        market=market,
+        metric_deltas=metric_deltas,
+    )
+    metric_failures.extend(
+        _paper_outcome_gate_failures(
+            strategy_v1=v1,
+            strategy_v2=v2,
+            metric_deltas=metric_deltas,
+        )
+    )
+    metric_failures.extend(_abstention_gate_failures(strategy_v2=v2))
+    for failure in metric_failures:
+        if dataset_preconditions_failed:
+            warning_gates.append(f"diagnostic_only.{failure}")
+        else:
+            failed_gates.append(failure)
+
+    safety_failures = _safety_gate_failures(safety=safety, strategy_v2=v2)
+    failed_gates.extend(safety_failures)
+    warning_gates.extend(_replay_warning_gates(strategy_v2=v2))
+
+    if safety_failures:
+        gate_status = GATE_FAIL
+    elif dataset_preconditions_failed:
+        gate_status = GATE_NOT_APPLICABLE
+    elif failed_gates:
+        gate_status = GATE_FAIL
+    else:
+        gate_status = GATE_PASS
+
+    superiority_claim_allowed = gate_status == GATE_PASS
+    failed_gates = list(dict.fromkeys(failed_gates))
+    warning_gates = list(dict.fromkeys(warning_gates))
+    return {
+        "gate_status": gate_status,
+        "superiority_claim_allowed": superiority_claim_allowed,
+        "dataset_label": dataset_label,
+        "failed_gates": failed_gates,
+        "warning_gates": warning_gates,
+        "metric_deltas": metric_deltas,
+        "strategy_v1_summary": _baseline_summary(v1),
+        "strategy_v2_summary": _baseline_summary(v2),
+        "baseline_summaries": {
+            name: _baseline_summary(baseline)
+            for name, baseline in sorted(baselines.items())
+        },
+        "gate_checks": gate_checks,
+        "recommendation": _gate_recommendation(
+            gate_status=gate_status,
+            failed_gates=failed_gates,
+            warning_gates=warning_gates,
+        ),
+    }
+
+
+def _safety_summary() -> dict[str, Any]:
+    return {
+        "paper_only": True,
+        "local_only": True,
+        "evaluation_only": True,
+        "can_create_orders": False,
+        "mutates_paper_trading_state": False,
+        "strategy_v2_candidate_policy_included": True,
+        "strategy_v2_production_enabled": False,
+        "phase8_started": False,
+        "live_trading_added": False,
+        "scheduler_added": False,
+        "direct_llm_to_order_path": False,
+    }
 
 
 def _evaluate_baselines(
@@ -681,14 +793,11 @@ def _dataset_summary(
     markets = sorted({record.market_id for record in records})
     resolved_markets = sorted(market_outcomes)
     evidence_timestamp_coverage = _evidence_timestamp_coverage(records)
-    max_closed_trades = max(
-        baseline["metrics"]["activity"]["closed_trade_count"]
-        for baseline in baselines.values()
-    )
-    candidate_forecasts = max(
-        baseline["metrics"]["forecast"]["scored_forecast_count"]
-        for baseline in baselines.values()
-    )
+    strategy_v2_metrics = baselines[BASELINE_STRATEGY_V2]["metrics"]
+    strategy_v2_closed_trades = strategy_v2_metrics["activity"]["closed_trade_count"]
+    strategy_v2_candidate_forecasts = strategy_v2_metrics["forecast"][
+        "scored_forecast_count"
+    ]
     gates = {
         "resolved_binary_markets": {
             "observed": len(resolved_markets),
@@ -701,14 +810,16 @@ def _dataset_summary(
             "passed": evaluated_rows >= SAMPLE_SIZE_TARGETS["evaluation_rows"],
         },
         "candidate_forecasts": {
-            "observed": candidate_forecasts,
+            "observed": strategy_v2_candidate_forecasts,
             "required": SAMPLE_SIZE_TARGETS["candidate_forecasts"],
-            "passed": candidate_forecasts >= SAMPLE_SIZE_TARGETS["candidate_forecasts"],
+            "passed": strategy_v2_candidate_forecasts
+            >= SAMPLE_SIZE_TARGETS["candidate_forecasts"],
         },
         "closed_paper_trades": {
-            "observed": max_closed_trades,
+            "observed": strategy_v2_closed_trades,
             "required": SAMPLE_SIZE_TARGETS["closed_paper_trades"],
-            "passed": max_closed_trades >= SAMPLE_SIZE_TARGETS["closed_paper_trades"],
+            "passed": strategy_v2_closed_trades
+            >= SAMPLE_SIZE_TARGETS["closed_paper_trades"],
         },
         "settlement_coverage_pct": {
             "observed": _rate(len(resolved_markets), len(markets)),
@@ -785,6 +896,364 @@ def _dataset_classification(
         "historical_local_dataset_with_settlement_below_sample_size_target",
         "historical local dataset with settlement but below sample-size target",
     )
+
+
+def _dataset_preconditions_failed(dataset_summary: dict[str, Any]) -> bool:
+    if dataset_summary["classification"] in {
+        "fixture_smoke",
+        "historical_local_dataset_without_settlement",
+    }:
+        return True
+    if not dataset_summary["acceptance_evaluation_eligible"]:
+        return True
+    return any(
+        not bool(gate["passed"])
+        for gate in dataset_summary["sample_size_gates"].values()
+    )
+
+
+def _record_gate(
+    gate_checks: dict[str, dict[str, Any]],
+    failed_gates: list[str],
+    *,
+    name: str,
+    passed: bool,
+    observed: object,
+    required: object,
+    reason: str,
+) -> None:
+    gate_checks[name] = {
+        "passed": passed,
+        "observed": observed,
+        "required": required,
+        "reason": reason,
+    }
+    if not passed:
+        failed_gates.append(name)
+
+
+def _metric_deltas(
+    *,
+    strategy_v1: dict[str, Any],
+    strategy_v2: dict[str, Any],
+    market: dict[str, Any],
+) -> dict[str, Any]:
+    v1_forecast = strategy_v1["metrics"]["forecast"]
+    v2_forecast = strategy_v2["metrics"]["forecast"]
+    market_forecast = market["metrics"]["forecast"]
+    v1_paper = strategy_v1["metrics"]["paper_outcome"]
+    v2_paper = strategy_v2["metrics"]["paper_outcome"]
+    market_paper = market["metrics"]["paper_outcome"]
+    calibration = _calibration_delta_summary(
+        v1_forecast["calibration_by_bucket"],
+        v2_forecast["calibration_by_bucket"],
+    )
+    return {
+        "brier_score_improvement_vs_strategy_v1": _lower_is_better_delta(
+            v1_forecast["brier_score"],
+            v2_forecast["brier_score"],
+        ),
+        "brier_score_improvement_vs_market_implied": _lower_is_better_delta(
+            market_forecast["brier_score"],
+            v2_forecast["brier_score"],
+        ),
+        "log_loss_improvement_vs_strategy_v1": _lower_is_better_delta(
+            v1_forecast["log_loss"],
+            v2_forecast["log_loss"],
+        ),
+        "calibration_buckets_compared": calibration["compared"],
+        "calibration_buckets_improved_vs_strategy_v1": calibration["improved"],
+        "calibration_buckets_worse_vs_strategy_v1": calibration["worse"],
+        "large_calibration_gap_buckets": calibration["large_gap_buckets"],
+        "total_return_delta_vs_strategy_v1": _simple_delta(
+            v2_paper["total_return"],
+            v1_paper["total_return"],
+        ),
+        "total_return_delta_vs_market_implied": _simple_delta(
+            v2_paper["total_return"],
+            market_paper["total_return"],
+        ),
+        "realized_paper_pnl_delta_vs_strategy_v1": _simple_delta(
+            v2_paper["realized_paper_pnl"],
+            v1_paper["realized_paper_pnl"],
+        ),
+        "max_drawdown_improvement_vs_strategy_v1": _lower_is_better_delta(
+            v1_paper["max_drawdown"],
+            v2_paper["max_drawdown"],
+        ),
+        "profit_factor_delta_vs_strategy_v1": _profit_factor_delta(
+            v2_paper,
+            v1_paper,
+        ),
+        "benchmark_relative_return": v2_paper["benchmark_relative_return"],
+        "abstention_rate_delta_vs_strategy_v1": _simple_delta(
+            strategy_v2["metrics"]["activity"]["abstention_rate"],
+            strategy_v1["metrics"]["activity"]["abstention_rate"],
+        ),
+    }
+
+
+def _forecast_quality_gate_failures(
+    *,
+    strategy_v1: dict[str, Any],
+    strategy_v2: dict[str, Any],
+    market: dict[str, Any],
+    metric_deltas: dict[str, Any],
+) -> list[str]:
+    failures: list[str] = []
+    v2_forecast = strategy_v2["metrics"]["forecast"]
+    if (
+        metric_deltas["brier_score_improvement_vs_strategy_v1"] is None
+        or metric_deltas["brier_score_improvement_vs_strategy_v1"]
+        < BRIER_IMPROVEMENT_THRESHOLD
+    ):
+        failures.append("forecast.brier_score_not_better_than_strategy_v1")
+    if (
+        metric_deltas["brier_score_improvement_vs_market_implied"] is None
+        or metric_deltas["brier_score_improvement_vs_market_implied"]
+        < BRIER_IMPROVEMENT_THRESHOLD
+    ):
+        failures.append("forecast.brier_score_not_better_than_market_implied")
+    if (
+        v2_forecast["structured_probability_completeness_rate"]
+        < MIN_STRUCTURED_PROBABILITY_COMPLETENESS
+    ):
+        failures.append("forecast.structured_probability_completeness_below_target")
+    compared = int(metric_deltas["calibration_buckets_compared"])
+    improved = int(metric_deltas["calibration_buckets_improved_vs_strategy_v1"])
+    if compared == 0:
+        failures.append("forecast.calibration_bucket_comparison_missing")
+    elif improved <= compared / 2:
+        failures.append("forecast.calibration_buckets_not_majority_improved")
+    if metric_deltas["large_calibration_gap_buckets"]:
+        failures.append("forecast.large_calibration_bucket_gap")
+    if _missing_probability_created_trade(strategy_v2):
+        failures.append("forecast.missing_probability_created_trade")
+    if _missing_probability_created_trade(strategy_v1):
+        failures.append("forecast.strategy_v1_missing_probability_created_trade")
+    if market["metrics"]["forecast"]["brier_score"] is None:
+        failures.append("forecast.market_implied_brier_missing")
+    return failures
+
+
+def _paper_outcome_gate_failures(
+    *,
+    strategy_v1: dict[str, Any],
+    strategy_v2: dict[str, Any],
+    metric_deltas: dict[str, Any],
+) -> list[str]:
+    failures: list[str] = []
+    v1_paper = strategy_v1["metrics"]["paper_outcome"]
+    v2_paper = strategy_v2["metrics"]["paper_outcome"]
+    if v2_paper["max_drawdown"] > v1_paper["max_drawdown"]:
+        failures.append("paper.max_drawdown_worse_than_strategy_v1")
+    v2_profit_factor = _profit_factor_for_gate(v2_paper)
+    v1_profit_factor = _profit_factor_for_gate(v1_paper)
+    if v2_profit_factor is None:
+        failures.append("paper.profit_factor_missing")
+    else:
+        if v2_profit_factor < 1.0:
+            failures.append("paper.profit_factor_below_one")
+        if v1_profit_factor is not None and v2_profit_factor < v1_profit_factor:
+            failures.append("paper.profit_factor_worse_than_strategy_v1")
+    if (
+        metric_deltas["total_return_delta_vs_strategy_v1"] is None
+        or metric_deltas["total_return_delta_vs_strategy_v1"] < 0
+    ):
+        failures.append("paper.benchmark_relative_return_negative_vs_strategy_v1")
+    return failures
+
+
+def _abstention_gate_failures(strategy_v2: dict[str, Any]) -> list[str]:
+    abstention_rate = strategy_v2["metrics"]["activity"]["abstention_rate"]
+    if not MIN_ABSTENTION_RATE <= abstention_rate <= MAX_ABSTENTION_RATE:
+        return ["activity.abstention_rate_out_of_bounds"]
+    return []
+
+
+def _safety_gate_failures(
+    *,
+    safety: dict[str, Any],
+    strategy_v2: dict[str, Any],
+) -> list[str]:
+    failures: list[str] = []
+    expected_values = {
+        "paper_only": True,
+        "local_only": True,
+        "evaluation_only": True,
+        "can_create_orders": False,
+        "mutates_paper_trading_state": False,
+        "strategy_v2_candidate_policy_included": True,
+        "strategy_v2_production_enabled": False,
+        "phase8_started": False,
+        "live_trading_added": False,
+        "scheduler_added": False,
+        "direct_llm_to_order_path": False,
+    }
+    for key, expected in expected_values.items():
+        if safety.get(key) != expected:
+            failures.append(f"safety.{key}")
+
+    reliability = strategy_v2["metrics"]["risk_reliability"]
+    replay = reliability.get("replay_validation")
+    if not isinstance(replay, dict):
+        failures.append("replay.validation_missing")
+    else:
+        if not replay.get("report_checksum_available"):
+            failures.append("replay.report_checksum_unavailable")
+        if replay.get("applicable"):
+            if replay.get("replay_success_rate") != 1.0:
+                failures.append("replay.success_rate_below_one")
+            if replay.get("replay_mutation_count") != 0:
+                failures.append("replay.mutation_count_nonzero")
+        elif replay.get("replay_mutation_count") not in (None, 0):
+            failures.append("replay.placeholder_mutation_count_nonzero")
+    if reliability.get("data_quality_failure_count", 0) != 0:
+        failures.append("safety.data_quality_failure_count")
+    return failures
+
+
+def _replay_warning_gates(strategy_v2: dict[str, Any]) -> list[str]:
+    replay = strategy_v2["metrics"]["risk_reliability"].get("replay_validation")
+    if isinstance(replay, dict) and replay.get("applicable") is False:
+        return ["replay.validation_placeholder_only"]
+    return []
+
+
+def _baseline_summary(baseline: dict[str, Any]) -> dict[str, Any]:
+    activity = baseline["metrics"]["activity"]
+    forecast = baseline["metrics"]["forecast"]
+    paper = baseline["metrics"]["paper_outcome"]
+    reliability = baseline["metrics"]["risk_reliability"]
+    return {
+        "baseline": baseline["baseline"],
+        "trade_count": activity["trade_count"],
+        "closed_trade_count": activity["closed_trade_count"],
+        "abstention_rate": activity["abstention_rate"],
+        "rejection_count": activity["rejection_count"],
+        "missing_probability_count": activity["missing_probability_count"],
+        "missing_settlement_count": activity["missing_settlement_count"],
+        "brier_score": forecast["brier_score"],
+        "log_loss": forecast["log_loss"],
+        "forecast_coverage": forecast["forecast_coverage"],
+        "structured_probability_completeness_rate": forecast[
+            "structured_probability_completeness_rate"
+        ],
+        "scored_forecast_count": forecast["scored_forecast_count"],
+        "realized_paper_pnl": paper["realized_paper_pnl"],
+        "total_return": paper["total_return"],
+        "benchmark_relative_return": paper["benchmark_relative_return"],
+        "max_drawdown": paper["max_drawdown"],
+        "win_rate": paper["win_rate"],
+        "profit_factor": paper["profit_factor"],
+        "gross_profit": paper["gross_profit"],
+        "gross_loss": paper["gross_loss"],
+        "provider_structured_output_failure_count": reliability[
+            "provider_structured_output_failure_count"
+        ],
+        "replay_validation": reliability["replay_validation"],
+    }
+
+
+def _calibration_delta_summary(
+    v1_buckets: dict[str, dict[str, Any]],
+    v2_buckets: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    compared = 0
+    improved = 0
+    worse = 0
+    large_gap_buckets: list[str] = []
+    for bucket, v2_metrics in v2_buckets.items():
+        v2_gap = v2_metrics["absolute_gap"]
+        v2_count = int(v2_metrics["row_count"])
+        v1_gap = v1_buckets.get(bucket, {}).get("absolute_gap")
+        if v2_count >= MIN_LARGE_BUCKET_ROWS and (
+            v2_gap is None or v2_gap > MAX_LARGE_BUCKET_CALIBRATION_GAP
+        ):
+            large_gap_buckets.append(bucket)
+        if v2_gap is None or v1_gap is None or v2_count == 0:
+            continue
+        compared += 1
+        if v2_gap <= v1_gap:
+            improved += 1
+        else:
+            worse += 1
+    return {
+        "compared": compared,
+        "improved": improved,
+        "worse": worse,
+        "large_gap_buckets": large_gap_buckets,
+    }
+
+
+def _missing_probability_created_trade(baseline: dict[str, Any]) -> bool:
+    trade_actions = {
+        SignalAction.PAPER_BUY_YES.value,
+        SignalAction.PAPER_BUY_NO.value,
+    }
+    return any(
+        row["forecast_probability"] is None and row["action"] in trade_actions
+        for row in baseline["rows"]
+    )
+
+
+def _lower_is_better_delta(
+    baseline_value: float | None,
+    candidate_value: float | None,
+) -> float | None:
+    if baseline_value is None or candidate_value is None:
+        return None
+    return round(float(baseline_value) - float(candidate_value), 8)
+
+
+def _simple_delta(
+    candidate_value: float | None,
+    baseline_value: float | None,
+) -> float | None:
+    if baseline_value is None or candidate_value is None:
+        return None
+    return round(float(candidate_value) - float(baseline_value), 8)
+
+
+def _profit_factor_delta(
+    candidate_paper: dict[str, Any],
+    baseline_paper: dict[str, Any],
+) -> float | None:
+    candidate = _profit_factor_for_gate(candidate_paper)
+    baseline = _profit_factor_for_gate(baseline_paper)
+    if candidate is None or baseline is None:
+        return None
+    return round(candidate - baseline, 8)
+
+
+def _profit_factor_for_gate(paper: dict[str, Any]) -> float | None:
+    value = paper["profit_factor"]
+    if value is not None:
+        return float(value)
+    gross_profit = float(paper["gross_profit"])
+    gross_loss = float(paper["gross_loss"])
+    if gross_profit > 0 and gross_loss == 0:
+        return 1_000_000.0
+    return None
+
+
+def _gate_recommendation(
+    *,
+    gate_status: str,
+    failed_gates: list[str],
+    warning_gates: list[str],
+) -> str:
+    if gate_status == GATE_PASS:
+        return "Strategy v2 passed the acceptance gate; superiority claims are allowed for this dataset."
+    if gate_status == GATE_NOT_APPLICABLE:
+        missing = ", ".join(failed_gates[:6]) if failed_gates else "acceptance preconditions"
+        return (
+            "Do not claim Strategy v2 superiority; acceptance is not applicable "
+            f"because minimum requirements are missing: {missing}."
+        )
+    failed = ", ".join(failed_gates[:6]) if failed_gates else "unspecified gate failure"
+    warnings = f" Warnings: {', '.join(warning_gates[:4])}." if warning_gates else ""
+    return f"Do not claim Strategy v2 superiority; acceptance failed: {failed}.{warnings}"
 
 
 def _attach_benchmark_relative_returns(baselines: dict[str, dict[str, Any]]) -> None:
@@ -923,6 +1392,7 @@ def _file_checksum(path: Path) -> str:
 
 def _markdown_report(report: dict[str, Any]) -> str:
     dataset = report["dataset"]
+    gate = report["acceptance_gate"]
     lines = [
         "# Strategy Offline Evaluation Report",
         "",
@@ -938,11 +1408,74 @@ def _markdown_report(report: dict[str, Any]) -> str:
         f"- Superiority claims allowed: {dataset['superiority_claim_allowed']}",
         f"- Superiority claim status: {dataset['superiority_claim']}",
         "",
+        "## Strategy v2 Acceptance Gate",
+        "",
+        f"- Gate status: `{gate['gate_status']}`",
+        f"- Strategy v2 passed acceptance: {gate['gate_status'] == GATE_PASS}",
+        f"- Superiority claims allowed: {gate['superiority_claim_allowed']}",
+        f"- Dataset label: `{gate['dataset_label']}`",
+        f"- Recommendation: {gate['recommendation']}",
+        "",
+        "### Failed Gates",
+        "",
+    ]
+    if gate["failed_gates"]:
+        lines.extend(f"- `{name}`" for name in gate["failed_gates"])
+    else:
+        lines.append("- None")
+    lines.extend(
+        [
+            "",
+            "### Warning Gates",
+            "",
+        ]
+    )
+    if gate["warning_gates"]:
+        lines.extend(f"- `{name}`" for name in gate["warning_gates"])
+    else:
+        lines.append("- None")
+    deltas = gate["metric_deltas"]
+    lines.extend(
+        [
+            "",
+            "### Strategy v2 Deltas",
+            "",
+            "| Metric | Delta |",
+            "| --- | ---: |",
+            "| Brier improvement vs Strategy v1 | "
+            f"{deltas['brier_score_improvement_vs_strategy_v1']} |",
+            "| Brier improvement vs market-implied | "
+            f"{deltas['brier_score_improvement_vs_market_implied']} |",
+            "| Total return delta vs Strategy v1 | "
+            f"{deltas['total_return_delta_vs_strategy_v1']} |",
+            "| Max drawdown improvement vs Strategy v1 | "
+            f"{deltas['max_drawdown_improvement_vs_strategy_v1']} |",
+            "| Profit factor delta vs Strategy v1 | "
+            f"{deltas['profit_factor_delta_vs_strategy_v1']} |",
+            "| Calibration buckets improved vs Strategy v1 | "
+            f"{deltas['calibration_buckets_improved_vs_strategy_v1']} / "
+            f"{deltas['calibration_buckets_compared']} |",
+            "",
+            "### Minimum Requirements",
+            "",
+            "| Gate | Observed | Required | Passed |",
+            "| --- | ---: | ---: | --- |",
+        ]
+    )
+    for gate_name, sample_gate in dataset["sample_size_gates"].items():
+        lines.append(
+            f"| {gate_name} | {sample_gate['observed']} | "
+            f"{sample_gate['required']} | {sample_gate['passed']} |"
+        )
+    lines.extend(
+        [
+            "",
         "## Baseline Metrics",
         "",
         "| Baseline | Trades | Abstention rate | Brier | PnL | Total return |",
         "| --- | ---: | ---: | ---: | ---: | ---: |",
-    ]
+        ]
+    )
     for baseline_name, baseline in report["baselines"].items():
         activity = baseline["metrics"]["activity"]
         forecast = baseline["metrics"]["forecast"]
@@ -959,7 +1492,7 @@ def _markdown_report(report: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "## Acceptance Gates",
+            "## Dataset Sample Gates",
             "",
             "| Gate | Observed | Required | Passed |",
             "| --- | ---: | ---: | --- |",

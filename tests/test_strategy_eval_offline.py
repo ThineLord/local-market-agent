@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import copy
 import inspect
 import json
 from pathlib import Path
@@ -12,6 +13,7 @@ import local_market_agent.operations.phase7_daily as phase7_daily_module
 from local_market_agent.cli import app
 from local_market_agent.eval.offline_strategy import (
     REQUIRED_BASELINES,
+    evaluate_strategy_acceptance_gate,
     run_strategy_offline_evaluation,
 )
 
@@ -97,6 +99,122 @@ def test_strategy_eval_offline_computes_abstention_rate_and_below_target_label(
     assert report["dataset"]["superiority_claim_allowed"] is False
 
 
+def test_strategy_eval_fixture_gate_blocks_superiority_claim(tmp_path):
+    result = run_strategy_offline_evaluation(
+        historical_file=HISTORICAL_FIXTURE,
+        output_dir=tmp_path,
+    )
+    gate = result.report["acceptance_gate"]
+
+    assert gate["gate_status"] == "not_applicable"
+    assert gate["superiority_claim_allowed"] is False
+    assert gate["dataset_label"] == "fixture_smoke"
+    assert "dataset.evaluation_rows" in gate["failed_gates"]
+    assert "dataset.resolved_binary_markets" in gate["failed_gates"]
+
+
+def test_strategy_eval_missing_settlement_blocks_acceptance(tmp_path):
+    dataset_path = _dataset_without_settlement(tmp_path)
+
+    result = run_strategy_offline_evaluation(
+        historical_file=dataset_path,
+        output_dir=tmp_path / "reports",
+    )
+    gate = result.report["acceptance_gate"]
+
+    assert result.report["dataset"]["classification"] == (
+        "historical_local_dataset_without_settlement"
+    )
+    assert gate["gate_status"] == "not_applicable"
+    assert gate["superiority_claim_allowed"] is False
+    assert "dataset.settlement_coverage_pct" in gate["failed_gates"]
+
+
+def test_strategy_eval_insufficient_sample_size_blocks_acceptance(tmp_path):
+    result = run_strategy_offline_evaluation(
+        historical_file=HISTORICAL_FIXTURE,
+        output_dir=tmp_path,
+    )
+    gate = result.report["acceptance_gate"]
+
+    assert gate["gate_status"] == "not_applicable"
+    assert gate["superiority_claim_allowed"] is False
+    assert any(name.startswith("dataset.") for name in gate["failed_gates"])
+
+
+def test_strategy_eval_strategy_v2_not_better_than_v1_fails_gate(tmp_path):
+    result = run_strategy_offline_evaluation(
+        historical_file=HISTORICAL_FIXTURE,
+        output_dir=tmp_path,
+    )
+    dataset_summary = _eligible_dataset_summary(result.report)
+    baselines = copy.deepcopy(result.report["baselines"])
+    baselines["strategy_v2_candidate"]["metrics"]["forecast"]["brier_score"] = (
+        baselines["strategy_v1"]["metrics"]["forecast"]["brier_score"] + 0.05
+    )
+
+    gate = evaluate_strategy_acceptance_gate(
+        dataset_summary=dataset_summary,
+        baselines=baselines,
+        safety=result.report["safety"],
+    )
+
+    assert gate["gate_status"] == "fail"
+    assert gate["superiority_claim_allowed"] is False
+    assert "forecast.brier_score_not_better_than_strategy_v1" in gate["failed_gates"]
+
+
+def test_strategy_eval_safety_placeholder_failure_blocks_gate(tmp_path):
+    result = run_strategy_offline_evaluation(
+        historical_file=HISTORICAL_FIXTURE,
+        output_dir=tmp_path,
+    )
+    safety = copy.deepcopy(result.report["safety"])
+    safety["can_create_orders"] = True
+
+    gate = evaluate_strategy_acceptance_gate(
+        dataset_summary=_eligible_dataset_summary(result.report),
+        baselines=result.report["baselines"],
+        safety=safety,
+    )
+
+    assert gate["gate_status"] == "fail"
+    assert gate["superiority_claim_allowed"] is False
+    assert "safety.can_create_orders" in gate["failed_gates"]
+
+
+def test_strategy_eval_markdown_report_includes_gate_verdict(tmp_path):
+    result = run_strategy_offline_evaluation(
+        historical_file=HISTORICAL_FIXTURE,
+        output_dir=tmp_path,
+    )
+    markdown = result.markdown_path.read_text()
+
+    assert "## Strategy v2 Acceptance Gate" in markdown
+    assert "Gate status: `not_applicable`" in markdown
+    assert "Superiority claims allowed: False" in markdown
+
+
+def test_strategy_eval_json_report_includes_gate_fields(tmp_path):
+    result = run_strategy_offline_evaluation(
+        historical_file=HISTORICAL_FIXTURE,
+        output_dir=tmp_path,
+    )
+    payload = json.loads(result.json_path.read_text())
+    gate = payload["acceptance_gate"]
+
+    assert gate["gate_status"] == "not_applicable"
+    assert gate["superiority_claim_allowed"] is False
+    assert gate["dataset_label"] == "fixture_smoke"
+    assert "failed_gates" in gate
+    assert "warning_gates" in gate
+    assert "metric_deltas" in gate
+    assert "strategy_v1_summary" in gate
+    assert "strategy_v2_summary" in gate
+    assert "baseline_summaries" in gate
+    assert "recommendation" in gate
+
+
 def test_strategy_eval_offline_random_baseline_is_fixed_seed_deterministic(tmp_path):
     first = run_strategy_offline_evaluation(
         historical_file=HISTORICAL_FIXTURE,
@@ -134,7 +252,9 @@ def test_strategy_eval_offline_cli_writes_json_and_markdown_reports(tmp_path):
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert payload["dataset_classification"] == "fixture_smoke"
+    assert payload["gate_status"] == "not_applicable"
     assert payload["superiority_claim_allowed"] is False
+    assert "dataset.evaluation_rows" in payload["failed_gates"]
     assert set(payload["baselines"]) == set(REQUIRED_BASELINES)
     assert Path(payload["json_path"]).exists()
     assert Path(payload["markdown_path"]).exists()
@@ -184,3 +304,32 @@ def test_strategy_eval_offline_adds_no_broker_live_or_order_apis():
     assert "local_market_agent.paper" not in source
     assert "local_market_agent.risk" not in source
     assert "broker" not in source.lower()
+
+
+def _dataset_without_settlement(tmp_path: Path) -> Path:
+    rows = []
+    for line in HISTORICAL_FIXTURE.read_text().splitlines()[:2]:
+        payload = json.loads(line)
+        payload.pop("settlement_outcome", None)
+        rows.append(json.dumps(payload, sort_keys=True))
+    path = tmp_path / "historical_without_settlement.jsonl"
+    path.write_text("\n".join(rows) + "\n")
+    return path
+
+
+def _eligible_dataset_summary(report: dict[str, object]) -> dict[str, object]:
+    dataset = copy.deepcopy(report["dataset"])
+    dataset["classification"] = (
+        "historical_local_dataset_eligible_for_acceptance_evaluation"
+    )
+    dataset["classification_detail"] = (
+        "historical local dataset eligible for acceptance evaluation"
+    )
+    dataset["acceptance_evaluation_eligible"] = True
+    dataset["has_settlement"] = True
+    dataset["settlement_coverage"] = "full"
+    dataset["market_settlement_coverage"] = "full"
+    for gate in dataset["sample_size_gates"].values():
+        gate["observed"] = gate["required"]
+        gate["passed"] = True
+    return dataset
