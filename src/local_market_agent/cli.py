@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import UTC, date, datetime, time
 from pathlib import Path
 from typing import Annotated
 
@@ -10,6 +10,12 @@ import typer
 from local_market_agent.adapters import FixtureAdapter
 from local_market_agent.agents import Reporter, ResearchBriefGenerator
 from local_market_agent.config import Settings, load_settings
+from local_market_agent.eval import (
+    DEFAULT_QWEN_BASE_URL,
+    DEFAULT_QWEN_MODEL,
+    run_daily_provider_comparison,
+    run_sandbox_provider_comparison,
+)
 from local_market_agent.llm import (
     build_llm_provider,
     llm_provider_audit,
@@ -611,6 +617,238 @@ def phase7_sandbox_run(
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.echo(json.dumps(result.summary, sort_keys=True))
+
+
+@app.command("phase7-research-quality-daily-compare")
+def phase7_research_quality_daily_compare(
+    fixture: Annotated[Path, typer.Option(help="Market fixture path.")] = Path(
+        "data/fixtures/demo_market.json"
+    ),
+    evidence: Annotated[Path, typer.Option(help="Evidence fixture path.")] = Path(
+        "data/fixtures/demo_evidence.json"
+    ),
+    market_source: Annotated[
+        str | None,
+        typer.Option(
+            "--market-source",
+            help=(
+                "Read-only market source for both provider runs: fixture, historical-file, "
+                "polymarket, kalshi, or yfinance."
+            ),
+        ),
+    ] = None,
+    market_id: Annotated[
+        str | None,
+        typer.Option("--market-id", help="Market identifier for selected read-only source."),
+    ] = None,
+    historical_file: Annotated[
+        Path | None,
+        typer.Option("--historical-file", help="Local JSONL historical dataset path."),
+    ] = None,
+    artifact_dir: Annotated[
+        Path,
+        typer.Option(help="Local Phase 7D artifact output directory."),
+    ] = Path("data/reports/research_quality"),
+    comparison_id: Annotated[
+        str | None,
+        typer.Option("--comparison-id", help="Optional deterministic comparison id."),
+    ] = None,
+    evaluation_date: Annotated[
+        str | None,
+        typer.Option(
+            "--evaluation-date",
+            help="Optional daily comparison date in YYYY-MM-DD format, evaluated at 16:00 UTC.",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(help="Evaluate without creating paper positions inside comparison DBs."),
+    ] = False,
+    require_manual_approval: Annotated[
+        bool | None,
+        typer.Option(
+            "--require-manual-approval/--no-require-manual-approval",
+            help="Override paper risk gate manual approval mode inside comparison DBs.",
+        ),
+    ] = False,
+    refresh_market_timestamp: Annotated[
+        bool,
+        typer.Option(
+            "--refresh-market-timestamp/--keep-fixture-timestamp",
+            help="Refresh market data timestamps before risk gates.",
+        ),
+    ] = True,
+    qwen_model: Annotated[
+        str,
+        typer.Option("--qwen-model", help="Ollama/OpenAI-compatible model name."),
+    ] = DEFAULT_QWEN_MODEL,
+    qwen_base_url: Annotated[
+        str,
+        typer.Option("--qwen-base-url", help="Ollama/OpenAI-compatible base URL."),
+    ] = DEFAULT_QWEN_BASE_URL,
+) -> None:
+    settings = _settings(
+        None,
+        market_source=market_source,
+        market_id=market_id,
+        historical_file=historical_file,
+    )
+    now = _evaluation_datetime(evaluation_date)
+    payload = run_daily_provider_comparison(
+        settings,
+        artifact_dir=artifact_dir,
+        comparison_id=comparison_id,
+        qwen_model=qwen_model,
+        qwen_base_url=qwen_base_url,
+        market_fixture=fixture,
+        evidence_fixture=evidence,
+        market_source=settings.market_source,
+        market_id=settings.market_id,
+        historical_file=settings.historical_file,
+        dry_run=dry_run,
+        require_manual_approval=require_manual_approval,
+        refresh_market_timestamp=refresh_market_timestamp,
+        now=now,
+    )
+    typer.echo(json.dumps(_comparison_cli_summary(payload), sort_keys=True))
+
+
+@app.command("phase7-research-quality-sandbox-compare")
+def phase7_research_quality_sandbox_compare(
+    fixture: Annotated[Path, typer.Option(help="Market fixture path.")] = Path(
+        "data/fixtures/demo_market.json"
+    ),
+    evidence: Annotated[Path, typer.Option(help="Evidence fixture path.")] = Path(
+        "data/fixtures/demo_evidence.json"
+    ),
+    market_source: Annotated[
+        str | None,
+        typer.Option(
+            "--market-source",
+            help=(
+                "Read-only market source for both provider sandboxes: fixture, "
+                "historical-file, polymarket, kalshi, or yfinance."
+            ),
+        ),
+    ] = None,
+    market_id: Annotated[
+        str | None,
+        typer.Option("--market-id", help="Market identifier for selected read-only source."),
+    ] = None,
+    historical_file: Annotated[
+        Path | None,
+        typer.Option("--historical-file", help="Local JSONL historical dataset path."),
+    ] = None,
+    artifact_dir: Annotated[
+        Path,
+        typer.Option(help="Local Phase 7D artifact output directory."),
+    ] = Path("data/reports/research_quality"),
+    comparison_id: Annotated[
+        str | None,
+        typer.Option("--comparison-id", help="Optional deterministic comparison id."),
+    ] = None,
+    days: Annotated[
+        int | None,
+        typer.Option(help="Number of sandbox days to simulate."),
+    ] = None,
+    start_date: Annotated[
+        str | None,
+        typer.Option(help="Inclusive sandbox start date in YYYY-MM-DD format."),
+    ] = None,
+    end_date: Annotated[
+        str | None,
+        typer.Option(help="Inclusive sandbox end date in YYYY-MM-DD format."),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(help="Evaluate without creating paper positions inside comparison DBs."),
+    ] = False,
+    require_manual_approval: Annotated[
+        bool | None,
+        typer.Option(
+            "--require-manual-approval/--no-require-manual-approval",
+            help="Override paper risk gate manual approval mode inside comparison DBs.",
+        ),
+    ] = False,
+    refresh_market_timestamp: Annotated[
+        bool,
+        typer.Option(
+            "--refresh-market-timestamp/--keep-fixture-timestamp",
+            help="Refresh market data timestamps before risk gates.",
+        ),
+    ] = True,
+    replay_sample_size: Annotated[
+        int,
+        typer.Option(help="Number of generated runs to replay-validate per provider."),
+    ] = 1,
+    qwen_model: Annotated[
+        str,
+        typer.Option("--qwen-model", help="Ollama/OpenAI-compatible model name."),
+    ] = DEFAULT_QWEN_MODEL,
+    qwen_base_url: Annotated[
+        str,
+        typer.Option("--qwen-base-url", help="Ollama/OpenAI-compatible base URL."),
+    ] = DEFAULT_QWEN_BASE_URL,
+) -> None:
+    settings = _settings(
+        None,
+        market_source=market_source,
+        market_id=market_id,
+        historical_file=historical_file,
+    )
+    try:
+        payload = run_sandbox_provider_comparison(
+            settings,
+            artifact_dir=artifact_dir,
+            comparison_id=comparison_id,
+            qwen_model=qwen_model,
+            qwen_base_url=qwen_base_url,
+            market_fixture=fixture,
+            evidence_fixture=evidence,
+            market_source=settings.market_source,
+            market_id=settings.market_id,
+            historical_file=settings.historical_file,
+            days=days,
+            start_date=_parse_cli_date(start_date, "--start-date"),
+            end_date=_parse_cli_date(end_date, "--end-date"),
+            dry_run=dry_run,
+            require_manual_approval=require_manual_approval,
+            refresh_market_timestamp=refresh_market_timestamp,
+            replay_sample_size=replay_sample_size,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(json.dumps(_comparison_cli_summary(payload), sort_keys=True))
+
+
+def _comparison_cli_summary(payload: dict[str, object]) -> dict[str, object]:
+    comparison = payload["comparison"]
+    if not isinstance(comparison, dict):
+        comparison = {}
+    summary = {
+        "comparison_id": payload["comparison_id"],
+        "comparison_kind": payload["comparison_kind"],
+        "artifact_root": payload["artifact_root"],
+        "json_path": payload["artifacts"]["json"],
+        "markdown_path": payload["artifacts"]["markdown"],
+        "materially_changed_outcomes": comparison.get("materially_changed_outcomes"),
+        "materiality_basis": comparison.get("materiality_basis", []),
+    }
+    runs = payload.get("runs")
+    if isinstance(runs, list) and payload["comparison_kind"] == "daily":
+        summary["provider_statuses"] = {
+            run["provider"]: run["run"]["status"]
+            for run in runs
+            if isinstance(run, dict) and isinstance(run.get("run"), dict)
+        }
+    return summary
+
+
+def _evaluation_datetime(value: str | None) -> datetime | None:
+    parsed = _parse_cli_date(value, "--evaluation-date")
+    if parsed is None:
+        return None
+    return datetime.combine(parsed, time(hour=16), tzinfo=UTC)
 
 
 def _parse_cli_date(value: str | None, option_name: str) -> date | None:
