@@ -17,6 +17,8 @@ dist/
 *.db-wal
 data/raw_cache/*
 !data/raw_cache/.gitkeep
+data/historical/*
+!data/historical/.gitkeep
 data/research_briefs/*
 !data/research_briefs/.gitkeep
 data/reports/*

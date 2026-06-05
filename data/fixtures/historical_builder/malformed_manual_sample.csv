@@ -1,0 +1,2 @@
+timestamp,date,platform,title,last_price,implied_probability,source_name
+2026-05-01T20:00:00Z,2026-05-01,kalshi,Bad manual row,not-a-number,0.50,Manual malformed fixture

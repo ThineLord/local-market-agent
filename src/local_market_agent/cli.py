@@ -11,6 +11,7 @@ from local_market_agent.adapters import FixtureAdapter
 from local_market_agent.agents import Reporter, ResearchBriefGenerator
 from local_market_agent.config import Settings, load_settings
 from local_market_agent.data import (
+    build_historical_dataset,
     validate_historical_dataset,
     write_historical_validation_reports,
 )
@@ -384,6 +385,56 @@ def validate_historical_dataset_command(
             sort_keys=True,
         )
     )
+
+
+@app.command("build-historical-dataset")
+def build_historical_dataset_command(
+    input_path: Annotated[
+        Path,
+        typer.Option(
+            "--input",
+            help="Manual local CSV, JSON, or JSONL file to convert.",
+        ),
+    ],
+    input_format: Annotated[
+        str,
+        typer.Option("--input-format", help="Manual input format: csv, json, or jsonl."),
+    ],
+    profile: Annotated[
+        str,
+        typer.Option(
+            "--profile",
+            help="Dataset profile: acceptance_candidate or calibration_only_last_price.",
+        ),
+    ],
+    output_dir: Annotated[
+        Path,
+        typer.Option(help="Local historical dataset output directory."),
+    ] = Path("data/historical"),
+    report_dir: Annotated[
+        Path,
+        typer.Option(help="Local validation report output directory."),
+    ] = Path("data/reports/historical_dataset"),
+    validate: Annotated[
+        bool,
+        typer.Option(
+            "--validate/--no-validate",
+            help="Run the Phase 7G validator after building the JSONL dataset.",
+        ),
+    ] = True,
+) -> None:
+    try:
+        result = build_historical_dataset(
+            input_path,
+            input_format=input_format,
+            profile=profile,
+            output_dir=output_dir,
+            report_dir=report_dir,
+            validate=validate,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(json.dumps(result.as_summary(), sort_keys=True))
 
 
 @app.command("phase7-run-daily")
