@@ -21,13 +21,14 @@ def build_phase7_run_manifest(
     evidence_fixture: Path,
     report_path: Path | None,
     cli_arguments: dict[str, Any],
+    market_data: dict[str, Any] | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> Phase7RunManifest:
     return Phase7RunManifest(
         run_id=run_id,
         created_at=created_at,
         code_version=_git_commit_hash(),
-        configuration_snapshot=_configuration_snapshot(settings),
+        configuration_snapshot=_configuration_snapshot(settings, market_data=market_data),
         cli_arguments=cli_arguments,
         fixture_paths={
             "market_fixture": str(market_fixture),
@@ -40,20 +41,29 @@ def build_phase7_run_manifest(
     )
 
 
-def _configuration_snapshot(settings: Settings) -> dict[str, Any]:
-    return {
+def _configuration_snapshot(
+    settings: Settings,
+    *,
+    market_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    snapshot = {
         "db_path": str(settings.db_path),
         "raw_cache_dir": str(settings.raw_cache_dir),
         "research_brief_dir": str(settings.research_brief_dir),
         "real_money_enabled": settings.real_money_enabled,
         "allow_live_orders": settings.allow_live_orders,
         "human_approval_required": settings.human_approval_required,
+        "market_source": settings.market_source,
+        "market_id": settings.market_id,
         "llm_provider": settings.llm_provider,
         "llm": llm_provider_audit(settings).as_dict(),
         "run_network_tests": settings.run_network_tests,
         "risk": settings.risk.as_dict(),
         "risk_gates": settings.risk_gates.as_dict(),
     }
+    if market_data is not None:
+        snapshot["market_data"] = market_data
+    return snapshot
 
 
 def sha256_file(path: Path | None) -> str | None:

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from local_market_agent.adapters import FixtureAdapter, PolymarketAdapter
 from local_market_agent.cli import app
 from local_market_agent.config import RiskGateConfig, Settings
 from local_market_agent.llm import MockLLMProvider, OpenAICompatibleProvider
@@ -58,6 +59,11 @@ def test_phase7_sandbox_cli_runs_seven_days(tmp_path):
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert payload["simulated_days"] == 7
+    assert payload["market_source"] == "fixture"
+    assert payload["data_mode"] == "fixture"
+    assert payload["market_data"]["network_calls_enabled"] is False
+    assert payload["market_data"]["profitability_claims_meaningful"] is False
+    assert payload["sandbox_data_semantics"]["label"] == "fixture replay sandbox"
     assert payload["status_counts"]["completed"] > 0
     assert sum(payload["status_counts"].values()) == 7
     assert len(payload["equity_curve"]) == 7
@@ -152,6 +158,54 @@ def test_phase7_sandbox_inherits_configured_provider_without_real_network(monkey
         record.metadata["llm_provider"]["model"] == "sandbox-test-model"
         for record in result.records
     )
+
+
+def test_phase7_sandbox_inherits_non_fixture_market_source_without_network(
+    monkeypatch,
+    tmp_path,
+):
+    calls: list[str] = []
+    fixture_snapshot = FixtureAdapter().fetch_snapshot()
+
+    def fake_fetch_snapshot(self: PolymarketAdapter, market_id: str):
+        calls.append(market_id)
+        return fixture_snapshot.model_copy(
+            update={
+                "market": fixture_snapshot.market.model_copy(
+                    update={"market_id": market_id, "platform": "polymarket"}
+                )
+            }
+        )
+
+    monkeypatch.setattr(PolymarketAdapter, "fetch_snapshot", fake_fetch_snapshot)
+    settings = _settings(tmp_path)
+    repo = SQLiteRepository(settings.db_path)
+    runner = Phase7SandboxRunner(
+        repository=repo,
+        settings=settings,
+        report_dir=tmp_path / "reports",
+        market_source="polymarket",
+        market_id="pm-sandbox-market",
+    )
+
+    result = runner.run(days=2, require_manual_approval=False, replay_sample_size=0)
+
+    assert calls == ["pm-sandbox-market", "pm-sandbox-market"]
+    assert result.summary["market_source"] == "polymarket"
+    assert result.summary["data_mode"] == "current_snapshot"
+    assert result.summary["local_only"] is False
+    assert result.summary["deterministic"] is False
+    assert result.summary["profitability_claims_meaningful"] is False
+    assert result.summary["sandbox_data_semantics"]["label"] == "snapshot repeated sandbox"
+    assert result.summary["sandbox_data_semantics"]["historical_market_data"] is False
+    assert result.summary["sandbox_data_semantics"]["snapshot_only"] is True
+    assert result.summary["market_data"]["network_calls_enabled"] is True
+    assert all(record.status.value == "rejected" for record in result.records)
+    assert all(
+        record.metadata["market_data"]["market_source"] == "polymarket"
+        for record in result.records
+    )
+    assert len(repo.list_paper_orders()) == 0
 
 
 def test_phase7_sandbox_rejects_live_execution_flags(tmp_path):

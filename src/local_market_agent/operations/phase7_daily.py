@@ -5,11 +5,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from local_market_agent.adapters import FixtureAdapter
 from local_market_agent.agents import ResearchBriefGenerator
 from local_market_agent.config import RiskGateConfig, Settings
 from local_market_agent.llm import build_llm_provider, llm_provider_audit
 from local_market_agent.operations.phase7_manifest import build_phase7_run_manifest
+from local_market_agent.operations.phase7_market_data import (
+    load_phase7_market_inputs,
+    phase7_market_data_audit,
+)
 from local_market_agent.paper import PaperLedger
 from local_market_agent.reporting import Phase7DailyReportGenerator
 from local_market_agent.risk import RiskEngine, RiskGateEvaluator
@@ -43,6 +46,8 @@ class Phase7DailyRunner:
     evidence_fixture: Path = Path("data/fixtures/demo_evidence.json")
     report_dir: Path = Path("data/reports")
     refresh_market_timestamp: bool = True
+    market_source: str | None = None
+    market_id: str | None = None
 
     def run(
         self,
@@ -58,6 +63,8 @@ class Phase7DailyRunner:
             self.settings.risk_gates,
             require_manual_approval=require_manual_approval,
         )
+        market_source = self.market_source or self.settings.market_source
+        market_id = self.market_id if self.market_id is not None else self.settings.market_id
         cli_arguments = cli_arguments or _runner_cli_arguments(
             dry_run=dry_run,
             require_manual_approval=require_manual_approval,
@@ -65,31 +72,54 @@ class Phase7DailyRunner:
             market_fixture=self.market_fixture,
             evidence_fixture=self.evidence_fixture,
             report_dir=self.report_dir,
+            market_source=market_source,
+            market_id=market_id,
         )
         provider_audit = llm_provider_audit(self.settings).as_dict()
+        try:
+            market_data_audit = phase7_market_data_audit(
+                market_source,
+                market_id=market_id,
+            ).as_dict()
+        except ValueError as exc:
+            market_data_audit = {
+                "market_source": market_source,
+                "market_id": market_id,
+                "configuration_error": str(exc),
+            }
         context: dict[str, Any] = {
             "run_id": run_id,
             "dry_run": dry_run,
-            "fixture_mode": True,
+            "fixture_mode": market_data_audit.get("is_fixture") is True,
             "refresh_market_timestamp": self.refresh_market_timestamp,
             "live_trading_allowed": False,
             "llm_provider": provider_audit,
+            "market_data": market_data_audit,
         }
         report_path: Path | None = None
         try:
             ledger = PaperLedger(self.repository, self.settings.risk)
 
-            snapshot = self._load_snapshot(started_at)
+            market_inputs = load_phase7_market_inputs(
+                market_source=market_source,
+                market_id=market_id,
+                market_fixture=self.market_fixture,
+                evidence_fixture=self.evidence_fixture,
+                raw_cache_dir=self.settings.raw_cache_dir,
+                now=started_at,
+                refresh_market_timestamp=self.refresh_market_timestamp,
+            )
+            market_data_audit = market_inputs.audit.as_dict()
+            context["fixture_mode"] = market_inputs.audit.is_fixture
+            context["market_data"] = market_data_audit
+            snapshot = market_inputs.snapshot
             context["market_id"] = snapshot.market.market_id
             context["snapshot_id"] = snapshot.snapshot_id
             self.repository.save_market_snapshot(snapshot)
-            evidence = FixtureAdapter(self.market_fixture, self.evidence_fixture).fetch_evidence(
-                snapshot.market.market_id
-            )
             brief = ResearchBriefGenerator(
                 repository=self.repository,
                 provider=build_llm_provider(self.settings),
-            ).generate(snapshot, evidence)
+            ).generate(snapshot, market_inputs.evidence)
             context["brief_id"] = brief.brief_id
             signal = PredictionMarketEdgeStrategy(self.settings.risk).generate_signal(
                 brief, snapshot
@@ -150,6 +180,13 @@ class Phase7DailyRunner:
                 report_date=started_at.date(),
                 generated_at=started_at,
                 output_path=report_path,
+                run_metadata={
+                    "market_source": market_data_audit.get("market_source"),
+                    "data_mode": market_data_audit.get("data_mode"),
+                    "profitability_claims_meaningful": market_data_audit.get(
+                        "profitability_claims_meaningful"
+                    ),
+                },
             )
             manifest = build_phase7_run_manifest(
                 run_id=run_id,
@@ -159,10 +196,12 @@ class Phase7DailyRunner:
                 evidence_fixture=self.evidence_fixture,
                 report_path=report_artifact.path,
                 cli_arguments=cli_arguments,
+                market_data=market_data_audit,
                 metadata={
                     "status": status.value,
                     "report_warnings": report_artifact.warnings,
                     "llm_provider": provider_audit,
+                    "market_data": market_data_audit,
                 },
             )
             record = Phase7RunRecord(
@@ -187,12 +226,13 @@ class Phase7DailyRunner:
                     "report_warnings": report_artifact.warnings,
                     "risk_gate_status": risk_gate_decision.status.value,
                     "dry_run": dry_run,
-                    "fixture_mode": True,
+                    "fixture_mode": market_data_audit.get("is_fixture") is True,
                     "refresh_market_timestamp": self.refresh_market_timestamp,
                     "live_trading_allowed": False,
                     "manifest_id": manifest.run_id,
                     "report_checksum": manifest.report_checksum,
                     "llm_provider": provider_audit,
+                    "market_data": market_data_audit,
                 },
             )
             self.repository.save_phase7_run_manifest(manifest)
@@ -208,12 +248,14 @@ class Phase7DailyRunner:
                 evidence_fixture=self.evidence_fixture,
                 report_path=report_path if report_path is not None and report_path.exists() else None,
                 cli_arguments=cli_arguments,
+                market_data=market_data_audit,
                 metadata={
                     "status": Phase7RunStatus.FAILED.value,
                     "error_type": type(exc).__name__,
                     "error_message": str(exc),
                     "partial_context": context,
                     "llm_provider": provider_audit,
+                    "market_data": market_data_audit,
                 },
             )
             record = Phase7RunRecord(
@@ -242,21 +284,16 @@ class Phase7DailyRunner:
                     "manifest_id": manifest.run_id,
                     "report_checksum": manifest.report_checksum,
                     "dry_run": dry_run,
-                    "fixture_mode": True,
+                    "fixture_mode": market_data_audit.get("is_fixture") is True,
                     "refresh_market_timestamp": self.refresh_market_timestamp,
                     "live_trading_allowed": False,
                     "llm_provider": provider_audit,
+                    "market_data": market_data_audit,
                 },
             )
             self.repository.save_phase7_run_manifest(manifest)
             self.repository.save_phase7_run_record(record)
             return record
-
-    def _load_snapshot(self, now: datetime) -> MarketSnapshot:
-        snapshot = FixtureAdapter(self.market_fixture, self.evidence_fixture).fetch_snapshot()
-        if not self.refresh_market_timestamp:
-            return snapshot
-        return snapshot.model_copy(update={"snapshot_id": new_id("snapshot"), "as_of": now})
 
     def _evaluate_risk_gates(
         self,
@@ -371,12 +408,16 @@ def _runner_cli_arguments(
     market_fixture: Path,
     evidence_fixture: Path,
     report_dir: Path,
+    market_source: str,
+    market_id: str | None,
 ) -> dict[str, Any]:
     return {
         "source": "runner",
         "dry_run": dry_run,
         "require_manual_approval": require_manual_approval,
         "refresh_market_timestamp": refresh_market_timestamp,
+        "market_source": market_source,
+        "market_id": market_id,
         "fixture": str(market_fixture),
         "evidence": str(evidence_fixture),
         "report_dir": str(report_dir),

@@ -51,7 +51,7 @@ API keys are intentionally not accepted as command-line plaintext.
 ## Execution Boundary
 
 ```text
-Fixture market/evidence
+Selected read-only market data
     |
 Configured research provider
     |
@@ -78,3 +78,5 @@ remain deterministic application code and keep their paper-only validation.
 - LLM output cannot create paper orders directly.
 - Paper orders still require a saved signal and approved risk decision.
 - Phase 7 remains paper-only and local-first.
+- Phase 7C PR-D1 keeps the default market source as fixture; optional
+  non-fixture sources are read-only snapshots only.

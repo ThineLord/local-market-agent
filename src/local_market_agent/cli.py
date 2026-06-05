@@ -19,6 +19,7 @@ from local_market_agent.operations import (
     Phase7ReplayService,
     Phase7SandboxRunner,
 )
+from local_market_agent.operations.phase7_market_data import phase7_market_data_audit
 from local_market_agent.paper import PaperLedger
 from local_market_agent.reporting import DailyReportService
 from local_market_agent.risk import RiskEngine
@@ -32,12 +33,22 @@ app = typer.Typer(help="Local Market Agent: offline-first research and paper tra
 def _settings(
     db: Path | None,
     *,
+    market_source: str | None = None,
+    market_id: str | None = None,
     llm_provider: str | None = None,
     llm_model: str | None = None,
     llm_base_url: str | None = None,
 ) -> Settings:
     settings = load_settings()
-    if db is None and llm_provider is None and llm_model is None and llm_base_url is None:
+    normalized_market_id = _optional_cli_text(market_id)
+    if (
+        db is None
+        and market_source is None
+        and market_id is None
+        and llm_provider is None
+        and llm_model is None
+        and llm_base_url is None
+    ):
         return settings
     return Settings(
         db_path=db or settings.db_path,
@@ -46,6 +57,8 @@ def _settings(
         real_money_enabled=settings.real_money_enabled,
         allow_live_orders=settings.allow_live_orders,
         human_approval_required=settings.human_approval_required,
+        market_source=market_source or settings.market_source,
+        market_id=normalized_market_id if market_id is not None else settings.market_id,
         llm_provider=llm_provider or settings.llm_provider,
         openai_compatible_base_url=llm_base_url or settings.openai_compatible_base_url,
         openai_compatible_model=llm_model or settings.openai_compatible_model,
@@ -59,6 +72,13 @@ def _settings(
 
 def _repository(settings: Settings) -> SQLiteRepository:
     return SQLiteRepository(settings.db_path)
+
+
+def _optional_cli_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 def _latest_snapshot(repo: SQLiteRepository, market_id: str | None = None) -> MarketSnapshot:
@@ -272,6 +292,34 @@ def llm_provider_audit_command(
     typer.echo(json.dumps(audit, sort_keys=True))
 
 
+@app.command("market-data-audit")
+def market_data_audit_command(
+    market_source: Annotated[
+        str | None,
+        typer.Option(
+            "--market-source",
+            help="Read-only market source: fixture, polymarket, kalshi, or yfinance.",
+        ),
+    ] = None,
+    market_id: Annotated[
+        str | None,
+        typer.Option(
+            "--market-id",
+            help="Market identifier for non-fixture read-only sources.",
+        ),
+    ] = None,
+) -> None:
+    settings = _settings(None, market_source=market_source, market_id=market_id)
+    try:
+        audit = phase7_market_data_audit(
+            settings.market_source,
+            market_id=settings.market_id,
+        ).as_dict()
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(json.dumps(audit, sort_keys=True))
+
+
 @app.command("phase7-run-daily")
 def phase7_run_daily(
     fixture: Annotated[Path, typer.Option(help="Market fixture path.")] = Path(
@@ -280,6 +328,20 @@ def phase7_run_daily(
     evidence: Annotated[Path, typer.Option(help="Evidence fixture path.")] = Path(
         "data/fixtures/demo_evidence.json"
     ),
+    market_source: Annotated[
+        str | None,
+        typer.Option(
+            "--market-source",
+            help="Read-only market source: fixture, polymarket, kalshi, or yfinance.",
+        ),
+    ] = None,
+    market_id: Annotated[
+        str | None,
+        typer.Option(
+            "--market-id",
+            help="Market identifier for non-fixture read-only sources.",
+        ),
+    ] = None,
     db: Annotated[Path | None, typer.Option(help="SQLite database path.")] = None,
     report_dir: Annotated[Path, typer.Option(help="Local report output directory.")] = Path(
         "data/reports"
@@ -299,7 +361,7 @@ def phase7_run_daily(
         bool,
         typer.Option(
             "--refresh-market-timestamp/--keep-fixture-timestamp",
-            help="Refresh fixture market data timestamp to the run time before risk gates.",
+            help="Refresh market data timestamp to the run time before risk gates.",
         ),
     ] = True,
     llm_provider: Annotated[
@@ -317,6 +379,8 @@ def phase7_run_daily(
 ) -> None:
     settings = _settings(
         db,
+        market_source=market_source,
+        market_id=market_id,
         llm_provider=llm_provider,
         llm_model=llm_model,
         llm_base_url=llm_base_url,
@@ -329,6 +393,8 @@ def phase7_run_daily(
         evidence_fixture=evidence,
         report_dir=report_dir,
         refresh_market_timestamp=refresh_market_timestamp,
+        market_source=settings.market_source,
+        market_id=settings.market_id,
     ).run(
         dry_run=dry_run,
         require_manual_approval=require_manual_approval,
@@ -337,6 +403,8 @@ def phase7_run_daily(
             "command": "phase7-run-daily",
             "fixture": str(fixture),
             "evidence": str(evidence),
+            "market_source": settings.market_source,
+            "market_id": settings.market_id,
             "db": str(settings.db_path),
             "report_dir": str(report_dir),
             "dry_run": dry_run,
@@ -360,6 +428,7 @@ def phase7_run_daily(
                 "manifest_id": record.manifest_id,
                 "report_checksum": record.metadata.get("report_checksum"),
                 "llm_provider": record.metadata.get("llm_provider"),
+                "market_data": record.metadata.get("market_data"),
                 "db_path": str(settings.db_path),
             },
             sort_keys=True,
@@ -388,6 +457,20 @@ def phase7_sandbox_run(
     evidence: Annotated[Path, typer.Option(help="Evidence fixture path.")] = Path(
         "data/fixtures/demo_evidence.json"
     ),
+    market_source: Annotated[
+        str | None,
+        typer.Option(
+            "--market-source",
+            help="Read-only market source: fixture, polymarket, kalshi, or yfinance.",
+        ),
+    ] = None,
+    market_id: Annotated[
+        str | None,
+        typer.Option(
+            "--market-id",
+            help="Market identifier for non-fixture read-only sources.",
+        ),
+    ] = None,
     db: Annotated[Path | None, typer.Option(help="SQLite database path.")] = None,
     report_dir: Annotated[Path, typer.Option(help="Local report output directory.")] = Path(
         "data/reports"
@@ -398,7 +481,7 @@ def phase7_sandbox_run(
     ] = None,
     days: Annotated[
         int | None,
-        typer.Option(help="Number of historical fixture days to simulate."),
+        typer.Option(help="Number of sandbox days to simulate."),
     ] = None,
     start_date: Annotated[
         str | None,
@@ -423,7 +506,7 @@ def phase7_sandbox_run(
         bool,
         typer.Option(
             "--refresh-market-timestamp/--keep-fixture-timestamp",
-            help="Refresh fixture market data timestamp to each simulated run time.",
+            help="Refresh market data timestamp to each simulated run time.",
         ),
     ] = True,
     replay_sample_size: Annotated[
@@ -449,6 +532,8 @@ def phase7_sandbox_run(
 ) -> None:
     settings = _settings(
         db,
+        market_source=market_source,
+        market_id=market_id,
         llm_provider=llm_provider,
         llm_model=llm_model,
         llm_base_url=llm_base_url,
@@ -465,6 +550,8 @@ def phase7_sandbox_run(
             report_dir=report_dir,
             summary_dir=summary_dir,
             refresh_market_timestamp=refresh_market_timestamp,
+            market_source=settings.market_source,
+            market_id=settings.market_id,
         ).run(
             start_date=parsed_start_date,
             end_date=parsed_end_date,

@@ -59,6 +59,9 @@ def test_cli_phase7_run_daily_fixture_smoke(tmp_path):
     assert payload["paper_order_id"] is not None
     assert payload["manifest_id"] == payload["run_id"]
     assert payload["report_checksum"] is not None
+    assert payload["market_data"]["market_source"] == "fixture"
+    assert payload["market_data"]["network_calls_enabled"] is False
+    assert payload["market_data"]["profitability_claims_meaningful"] is False
     report_path = Path(payload["report_path"])
     assert report_path.exists()
     assert report_path.name == f"phase7_daily_report_{payload['run_id']}.md"
@@ -147,3 +150,71 @@ def test_cli_llm_provider_audit_reports_openai_compatible_without_secret():
     assert payload["is_real"] is True
     assert payload["api_key_configured"] is False
     assert "api_key" not in payload
+
+
+def test_cli_market_data_audit_reports_default_fixture():
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["market-data-audit"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["market_source"] == "fixture"
+    assert payload["data_mode"] == "fixture"
+    assert payload["network_calls_enabled"] is False
+    assert payload["is_fixture"] is True
+    assert payload["is_historical"] is False
+    assert payload["profitability_claims_meaningful"] is False
+    assert payload["can_create_orders"] is False
+
+
+def test_cli_market_data_audit_treats_blank_market_id_as_unset(monkeypatch):
+    monkeypatch.setenv("LMA_MARKET_SOURCE", "fixture")
+    monkeypatch.setenv("LMA_MARKET_ID", "")
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["market-data-audit"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["market_source"] == "fixture"
+    assert payload["market_id"] is None
+
+
+def test_cli_market_data_audit_reports_snapshot_source_without_network_call():
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "market-data-audit",
+            "--market-source",
+            "polymarket",
+            "--market-id",
+            "pm-audit-market",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["market_source"] == "polymarket"
+    assert payload["market_id"] == "pm-audit-market"
+    assert payload["data_mode"] == "current_snapshot"
+    assert payload["network_calls_enabled"] is True
+    assert payload["is_historical"] is False
+    assert payload["is_snapshot_only"] is True
+    assert payload["read_only"] is True
+    assert payload["can_create_orders"] is False
+    assert payload["configuration_error"] is None
+
+
+def test_cli_market_data_audit_reports_missing_non_fixture_market_id():
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["market-data-audit", "--market-source", "kalshi"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["market_source"] == "kalshi"
+    assert payload["requires_market_id"] is True
+    assert "--market-id is required" in payload["configuration_error"]

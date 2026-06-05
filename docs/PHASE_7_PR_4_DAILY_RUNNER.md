@@ -14,6 +14,7 @@ Included:
 - `lma phase7-run-daily` CLI command
 - Dry-run mode
 - Deterministic fixture mode
+- Phase 7C PR-D1 read-only market source selector, with `fixture` as the default
 - Phase 7 daily report generation through PR-3
 - Configured research LLM provider path, with `mock` as the default
 
@@ -74,6 +75,23 @@ lma phase7-run-daily \
 The provider can only draft the research brief. Signal generation, risk
 decisions, risk gates, and paper ledger writes remain deterministic code paths.
 
+Inspect the selected market data source without fetching data:
+
+```bash
+lma market-data-audit
+```
+
+Use an explicit read-only current snapshot source:
+
+```bash
+lma phase7-run-daily \
+  --market-source polymarket \
+  --market-id <polymarket-market-id>
+```
+
+Non-fixture sources are read-only snapshot inputs and require an explicit market
+identifier. They do not add broker access or order execution.
+
 Keep the fixture timestamp unchanged to exercise market-data freshness gates:
 
 ```bash
@@ -89,7 +107,7 @@ By default, the command uses:
 ## Run Flow
 
 ```text
-Fixture market data
+Selected read-only market data
     |
 Configured research LLM provider (mock by default)
     |
@@ -127,7 +145,8 @@ decision, optional paper order, portfolio snapshot, report path, and run reasons
 
 ## Safety Invariants
 
-- The runner uses fixture/read-only local inputs in PR-4.
+- The runner defaults to fixture/local inputs; non-fixture sources are explicit
+  read-only current snapshots added in Phase 7C PR-D1.
 - The runner does not schedule itself or run in the background.
 - Dry-run mode does not create paper orders, fills, or positions.
 - Paper ledger mutation happens only after an approved Phase 7 risk gate decision.

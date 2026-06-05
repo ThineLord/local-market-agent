@@ -28,6 +28,17 @@ class KalshiAdapter:
             return [item for item in payload["markets"] if isinstance(item, dict)]
         return []
 
+    def fetch_snapshot(self, market_id: str) -> MarketSnapshot:
+        url = f"{self.BASE_URL}/markets/{market_id}"
+        payload = safe_get_json(url)
+        cache_json(self.raw_cache_dir, url, payload)
+        if isinstance(payload, dict) and isinstance(payload.get("market"), dict):
+            return self.normalize_market(payload["market"])
+        if isinstance(payload, dict):
+            return self.normalize_market(payload)
+        msg = "unexpected Kalshi market response"
+        raise RuntimeError(msg)
+
     def normalize_market(self, payload: dict[str, Any]) -> MarketSnapshot:
         ticker = str(payload.get("ticker") or payload.get("event_ticker") or "kalshi-demo")
         yes_bid = _price(payload.get("yes_bid"))

@@ -57,6 +57,26 @@ lma phase7-run-daily --llm-provider openai-compatible --llm-model local-model
 The configured LLM provider can draft research JSON only. Signals, risk
 decisions, risk gates, and paper orders remain rule-based and paper-only.
 
+## Phase 7 Market Data
+
+Phase 7 daily and sandbox runs default to deterministic fixture market data:
+
+```bash
+lma market-data-audit
+lma phase7-run-daily --market-source fixture
+```
+
+Optional read-only snapshot sources can be selected explicitly:
+
+```bash
+lma phase7-run-daily --market-source polymarket --market-id <market-id>
+lma phase7-sandbox-run --days 30 --market-source yfinance --market-id SPY
+```
+
+Non-fixture sandbox runs are labeled as snapshot-repeated workflows. They check
+workflow correctness against read-only current data, not historical strategy
+profitability. Phase 7 still does not execute real trades.
+
 ## Dashboard
 
 ```bash

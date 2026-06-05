@@ -12,6 +12,14 @@ def _env_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_str_or_none(name: str) -> str | None:
+    value = os.getenv(name)
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
 @dataclass(frozen=True)
 class RiskGateConfig:
     max_market_data_age_seconds: int = 300
@@ -84,6 +92,8 @@ class Settings:
     real_money_enabled: bool = False
     allow_live_orders: bool = False
     human_approval_required: bool = True
+    market_source: str = "fixture"
+    market_id: str | None = None
     llm_provider: str = "mock"
     openai_compatible_base_url: str = "http://localhost:1234/v1"
     openai_compatible_model: str = "local-model"
@@ -111,6 +121,8 @@ def load_settings() -> Settings:
         real_money_enabled=_env_bool("REAL_MONEY_ENABLED", False),
         allow_live_orders=_env_bool("ALLOW_LIVE_ORDERS", False),
         human_approval_required=_env_bool("HUMAN_APPROVAL_REQUIRED", True),
+        market_source=os.getenv("LMA_MARKET_SOURCE", "fixture"),
+        market_id=_env_str_or_none("LMA_MARKET_ID"),
         llm_provider=os.getenv("LMA_LLM_PROVIDER", "mock"),
         openai_compatible_base_url=os.getenv(
             "LMA_OPENAI_COMPATIBLE_BASE_URL", "http://localhost:1234/v1"

@@ -2,7 +2,7 @@
 
 ## Objective
 
-Phase 7B adds a local historical sandbox runner for Phase 7 paper operations.
+Phase 7B adds a local sandbox runner for Phase 7 paper operations.
 It simulates repeated manually invoked Phase 7 daily runs across a historical
 date range using local deterministic fixture inputs.
 
@@ -47,6 +47,18 @@ lma phase7-sandbox-run \
   --llm-base-url http://localhost:1234/v1
 ```
 
+Run the sandbox against an explicit read-only current snapshot source:
+
+```bash
+lma phase7-sandbox-run \
+  --days 7 \
+  --market-source polymarket \
+  --market-id <polymarket-market-id>
+```
+
+Non-fixture sandbox runs are labeled `snapshot repeated sandbox`. They are not
+historical backtests and profitability claims are not meaningful.
+
 The command prints the sandbox summary JSON and writes the same JSON to:
 
 ```text
@@ -68,10 +80,13 @@ Phase7SandboxRunner
     +-- sandbox summary JSON artifact
 ```
 
-Each simulated day uses the local fixture market and evidence files. The runner
-refreshes the fixture market timestamp to the simulated day by default and gives
+Each default simulated day uses the local fixture market and evidence files. The
+runner refreshes the market timestamp to the simulated day by default and gives
 the refreshed snapshot a run-scoped snapshot id, so generated run records do not
 share a mutable snapshot reference.
+
+Phase 7C PR-D1 also allows explicit read-only current snapshot sources. These
+sources do not provide historical day-by-day sandbox data in this implementation.
 
 The deterministic model context is only used by the sandbox. Normal Phase 7
 daily runs continue to use regular UUID-based ids and the current UTC clock.
@@ -82,6 +97,9 @@ The summary includes:
 
 - Sandbox id, date range, simulated day count, input paths, and safety flags.
 - Research LLM provider audit metadata.
+- Market data audit metadata, including source, data mode, network-call
+  possibility, historical/snapshot-only flags, and whether profitability claims
+  are meaningful.
 - Completed, rejected, failed, pending, halted, and dry-run counts.
 - One equity curve point per generated run when a portfolio snapshot exists.
 - Total return from configured paper starting cash to ending sandbox equity.
@@ -114,7 +132,8 @@ and `mutation_detected`.
 ## Safety Invariants
 
 - Paper-only execution mode.
-- Local fixture and SQLite inputs only.
+- Default local fixture and SQLite inputs; optional non-fixture market sources
+  are read-only public snapshot inputs only.
 - No broker API, private trading endpoint, withdrawal, wallet, leverage,
   derivatives, shorting, scheduler, daemon, autostart, cloud deployment, or
   direct LLM-to-order path.
@@ -127,8 +146,12 @@ and `mutation_detected`.
 
 ## Limitations
 
-- The sandbox reuses the existing deterministic fixture market and evidence
-  set; it does not introduce a new historical data provider.
+- Fixture mode reuses the existing deterministic fixture market and evidence
+  set.
+- Non-fixture mode uses current snapshots only; it does not introduce a new
+  historical data provider.
+- Sandbox total return, drawdown, win rate, and profit factor are workflow
+  diagnostics unless backed by true historical market states and settlements.
 - A real OpenAI-compatible provider may make research network calls only when
   explicitly selected; default sandbox runs remain mock/offline.
 - Win rate and profit factor are `null` unless generated positions are later

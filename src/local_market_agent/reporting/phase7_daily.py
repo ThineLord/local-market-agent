@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Any
 
 from local_market_agent.reporting.phase7_metrics import Phase7Metrics, Phase7MetricsCalculator
 from local_market_agent.schemas import (
@@ -36,6 +37,7 @@ class Phase7DailyReportGenerator:
         report_date: date | None = None,
         generated_at: datetime | None = None,
         output_path: str | Path | None = None,
+        run_metadata: dict[str, Any] | None = None,
     ) -> Phase7DailyReportArtifact:
         generated_at = _as_utc(generated_at or datetime.now(UTC))
         report_date = report_date or generated_at.date()
@@ -59,6 +61,7 @@ class Phase7DailyReportGenerator:
             risk_gate_decisions=risk_gate_decisions,
             metrics=metrics,
             warnings=warnings,
+            run_metadata=run_metadata or {},
         )
         output.write_text(markdown, encoding="utf-8")
         return Phase7DailyReportArtifact(
@@ -81,6 +84,7 @@ class Phase7DailyReportGenerator:
         risk_gate_decisions: list[RiskGateDecision],
         metrics: Phase7Metrics,
         warnings: list[str],
+        run_metadata: dict[str, Any],
     ) -> str:
         open_positions = [position for position in positions if position.is_open]
         realized_pnl = _realized_pnl(positions)
@@ -100,6 +104,7 @@ class Phase7DailyReportGenerator:
                     ["Generated at", _iso(generated_at)],
                     ["Execution mode", "paper-only"],
                     ["Repository", str(self.repository.db_path)],
+                    *_run_metadata_rows(run_metadata),
                 ],
             ),
             "",
@@ -184,6 +189,18 @@ def _portfolio_snapshot_section(snapshot: PortfolioSnapshot | None) -> str:
             ["Total positions", str(snapshot.total_positions)],
         ],
     )
+
+
+def _run_metadata_rows(metadata: dict[str, Any]) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for field, label in [
+        ("market_source", "Market source"),
+        ("data_mode", "Market data mode"),
+        ("profitability_claims_meaningful", "Profitability claims meaningful"),
+    ]:
+        if field in metadata:
+            rows.append([label, str(metadata[field])])
+    return rows
 
 
 def _open_positions_section(

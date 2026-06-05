@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+from local_market_agent.adapters import FixtureAdapter, PolymarketAdapter
 from local_market_agent.config import RiskGateConfig, Settings
 from local_market_agent.llm import MockLLMProvider, OpenAICompatibleProvider
 from local_market_agent.operations import Phase7DailyRunner
@@ -57,8 +58,13 @@ def test_phase7_runner_successful_approved_paper_run(tmp_path):
     assert manifest.fixture_paths["market_fixture"] == "data/fixtures/demo_market.json"
     assert manifest.configuration_snapshot["allow_live_orders"] is False
     assert manifest.configuration_snapshot["llm"]["provider"] == "mock"
+    assert manifest.configuration_snapshot["market_data"]["market_source"] == "fixture"
+    assert manifest.configuration_snapshot["market_data"]["network_calls_enabled"] is False
     assert record.metadata["llm_provider"]["provider"] == "mock"
     assert record.metadata["llm_provider"]["network_calls_enabled"] is False
+    assert record.metadata["market_data"]["market_source"] == "fixture"
+    assert record.metadata["market_data"]["data_mode"] == "fixture"
+    assert record.metadata["market_data"]["profitability_claims_meaningful"] is False
     assert len(repo.list_paper_orders()) == 1
     assert len(repo.list_paper_fills()) == 1
     assert len(repo.list_positions()) == 1
@@ -109,6 +115,52 @@ def test_phase7_runner_uses_configured_provider_without_real_network(monkeypatch
     assert manifest.execution_mode == ExecutionMode.PAPER
     assert repo.list_paper_orders()[0].execution_mode == ExecutionMode.PAPER
     assert repo.list_risk_gate_decisions()[0].execution_mode == ExecutionMode.PAPER
+
+
+def test_phase7_runner_selects_non_fixture_market_source_without_network(monkeypatch, tmp_path):
+    calls: list[str] = []
+    fixture_snapshot = FixtureAdapter().fetch_snapshot()
+
+    def fake_fetch_snapshot(self: PolymarketAdapter, market_id: str):
+        calls.append(market_id)
+        return fixture_snapshot.model_copy(
+            update={
+                "market": fixture_snapshot.market.model_copy(
+                    update={"market_id": market_id, "platform": "polymarket"}
+                )
+            }
+        )
+
+    monkeypatch.setattr(PolymarketAdapter, "fetch_snapshot", fake_fetch_snapshot)
+    settings = _settings(tmp_path)
+    repo = SQLiteRepository(settings.db_path)
+    runner = Phase7DailyRunner(
+        repository=repo,
+        settings=settings,
+        report_dir=tmp_path / "reports",
+        market_source="polymarket",
+        market_id="pm-test-market",
+    )
+
+    record = runner.run(now=NOW)
+
+    assert calls == ["pm-test-market"]
+    assert record.status == Phase7RunStatus.REJECTED
+    assert record.paper_order_id is None
+    assert len(repo.list_paper_orders()) == 0
+    market_data = record.metadata["market_data"]
+    assert market_data["market_source"] == "polymarket"
+    assert market_data["market_id"] == "pm-test-market"
+    assert market_data["data_mode"] == "current_snapshot"
+    assert market_data["network_calls_enabled"] is True
+    assert market_data["is_historical"] is False
+    assert market_data["profitability_claims_meaningful"] is False
+    assert market_data["evidence_source"] == "none"
+    assert market_data["can_create_orders"] is False
+    manifest = repo.load_phase7_run_manifest(record.run_id)
+    assert manifest is not None
+    assert manifest.configuration_snapshot["market_data"] == market_data
+    assert manifest.execution_mode == ExecutionMode.PAPER
 
 
 def test_phase7_runner_rejected_risk_gate_does_not_create_order(tmp_path):

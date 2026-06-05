@@ -11,6 +11,11 @@ from local_market_agent.adapters import FixtureAdapter
 from local_market_agent.config import Settings
 from local_market_agent.llm import llm_provider_audit
 from local_market_agent.operations.phase7_daily import Phase7DailyRunner
+from local_market_agent.operations.phase7_market_data import (
+    MARKET_SOURCE_FIXTURE,
+    normalize_market_source,
+    phase7_market_data_audit,
+)
 from local_market_agent.operations.phase7_replay import Phase7ReplayService
 from local_market_agent.schemas import Phase7RunRecord, Phase7RunStatus
 from local_market_agent.schemas.models import Position, deterministic_model_context
@@ -49,6 +54,8 @@ class Phase7SandboxRunner:
     report_dir: Path = Path("data/reports")
     summary_dir: Path | None = None
     refresh_market_timestamp: bool = True
+    market_source: str | None = None
+    market_id: str | None = None
 
     def run(
         self,
@@ -62,17 +69,23 @@ class Phase7SandboxRunner:
         sandbox_id: str | None = None,
     ) -> Phase7SandboxResult:
         _assert_paper_only(self.settings)
+        market_source = self.market_source or self.settings.market_source
+        market_id = self.market_id if self.market_id is not None else self.settings.market_id
+        market_data = phase7_market_data_audit(market_source, market_id=market_id)
         date_range = resolve_sandbox_date_range(
             market_fixture=self.market_fixture,
             evidence_fixture=self.evidence_fixture,
             start_date=start_date,
             end_date=end_date,
             days=days,
+            market_source=market_source,
         )
         sandbox_id = sandbox_id or _sandbox_id(
             date_range=date_range,
             market_fixture=self.market_fixture,
             evidence_fixture=self.evidence_fixture,
+            market_source=market_source,
+            market_id=market_id,
             dry_run=dry_run,
             require_manual_approval=require_manual_approval,
             refresh_market_timestamp=self.refresh_market_timestamp,
@@ -86,6 +99,8 @@ class Phase7SandboxRunner:
             evidence_fixture=self.evidence_fixture,
             report_dir=self.report_dir,
             refresh_market_timestamp=self.refresh_market_timestamp,
+            market_source=market_source,
+            market_id=market_id,
         )
 
         for simulated_date in date_range.dates():
@@ -103,6 +118,8 @@ class Phase7SandboxRunner:
                         "simulated_date": simulated_date.isoformat(),
                         "fixture": str(self.market_fixture),
                         "evidence": str(self.evidence_fixture),
+                        "market_source": market_source,
+                        "market_id": market_id,
                         "db": str(self.settings.db_path),
                         "report_dir": str(self.report_dir),
                         "dry_run": dry_run,
@@ -133,6 +150,9 @@ class Phase7SandboxRunner:
             dry_run=dry_run,
             require_manual_approval=require_manual_approval,
             refresh_market_timestamp=self.refresh_market_timestamp,
+            market_data=market_data.as_dict(),
+            market_source=market_source,
+            market_id=market_id,
         )
         output = self._summary_path(sandbox_id, date_range)
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -156,6 +176,7 @@ def resolve_sandbox_date_range(
     start_date: date | None = None,
     end_date: date | None = None,
     days: int | None = None,
+    market_source: str | None = MARKET_SOURCE_FIXTURE,
 ) -> SandboxDateRange:
     if days is None and start_date is None and end_date is None:
         days = 30
@@ -171,8 +192,11 @@ def resolve_sandbox_date_range(
     elif days is not None and end_date is not None:
         start_date = end_date - timedelta(days=days - 1)
     elif days is not None:
-        fixture_date = FixtureAdapter(market_fixture, evidence_fixture).fetch_snapshot().as_of.date()
-        end_date = fixture_date
+        source = normalize_market_source(market_source)
+        if source == MARKET_SOURCE_FIXTURE:
+            end_date = FixtureAdapter(market_fixture, evidence_fixture).fetch_snapshot().as_of.date()
+        else:
+            end_date = datetime.now(UTC).date()
         start_date = end_date - timedelta(days=days - 1)
     else:
         msg = "provide --days, or provide both --start-date and --end-date"
@@ -207,6 +231,8 @@ def _sandbox_id(
     date_range: SandboxDateRange,
     market_fixture: Path,
     evidence_fixture: Path,
+    market_source: str,
+    market_id: str | None,
     dry_run: bool,
     require_manual_approval: bool | None,
     refresh_market_timestamp: bool,
@@ -217,6 +243,8 @@ def _sandbox_id(
         "end_date": date_range.end_date.isoformat(),
         "market_fixture": str(market_fixture),
         "evidence_fixture": str(evidence_fixture),
+        "market_source": market_source,
+        "market_id": market_id,
         "dry_run": dry_run,
         "require_manual_approval": require_manual_approval,
         "refresh_market_timestamp": refresh_market_timestamp,
@@ -277,6 +305,9 @@ def _build_summary(
     dry_run: bool,
     require_manual_approval: bool | None,
     refresh_market_timestamp: bool,
+    market_data: dict[str, Any],
+    market_source: str,
+    market_id: str | None,
 ) -> dict[str, Any]:
     equity_curve = _equity_curve(repository, records)
     status_counts = _status_counts(records)
@@ -290,9 +321,14 @@ def _build_summary(
         "sandbox_id": sandbox_id,
         "phase": "7B",
         "execution_mode": "paper",
-        "local_only": True,
-        "deterministic": True,
+        "local_only": not bool(market_data.get("network_calls_enabled")),
+        "deterministic": bool(market_data.get("is_fixture")),
         "llm_provider": llm_provider_audit(settings).as_dict(),
+        "market_source": market_data["market_source"],
+        "data_mode": market_data["data_mode"],
+        "profitability_claims_meaningful": market_data["profitability_claims_meaningful"],
+        "market_data": market_data,
+        "sandbox_data_semantics": _sandbox_data_semantics(market_data),
         "live_trading_allowed": False,
         "start_date": date_range.start_date.isoformat(),
         "end_date": date_range.end_date.isoformat(),
@@ -310,6 +346,8 @@ def _build_summary(
         "inputs": {
             "market_fixture": str(market_fixture),
             "evidence_fixture": str(evidence_fixture),
+            "market_source": market_source,
+            "market_id": market_id,
             "db_path": str(settings.db_path),
             "report_dir": str(report_dir),
             "dry_run": dry_run,
@@ -346,6 +384,31 @@ def _run_summary(record: Phase7RunRecord) -> dict[str, Any]:
         "manifest_id": record.manifest_id,
         "report_checksum": record.metadata.get("report_checksum"),
         "live_trading_allowed": record.metadata.get("live_trading_allowed"),
+        "market_data": record.metadata.get("market_data"),
+    }
+
+
+def _sandbox_data_semantics(market_data: dict[str, Any]) -> dict[str, Any]:
+    if market_data.get("is_fixture"):
+        label = "fixture replay sandbox"
+        note = (
+            "Deterministic fixture data is replayed through the workflow; this validates "
+            "system integrity and paper controls, not real historical profitability."
+        )
+    else:
+        label = "snapshot repeated sandbox"
+        note = (
+            "A current read-only snapshot source is selected; repeated simulated days are "
+            "not a historical backtest and profitability claims are not meaningful."
+        )
+    return {
+        "label": label,
+        "historical_market_data": bool(market_data.get("is_historical")),
+        "snapshot_only": bool(market_data.get("is_snapshot_only")),
+        "profitability_claims_meaningful": bool(
+            market_data.get("profitability_claims_meaningful")
+        ),
+        "note": note,
     }
 
 
