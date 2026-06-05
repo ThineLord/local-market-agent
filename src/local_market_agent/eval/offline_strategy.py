@@ -29,11 +29,15 @@ from local_market_agent.schemas.models import (
     SignalAction,
     deterministic_model_context,
 )
-from local_market_agent.strategy import PredictionMarketEdgeStrategy
+from local_market_agent.strategy import (
+    PredictionMarketEdgeStrategy,
+    PredictionMarketV2CandidateStrategy,
+)
 
 BASELINE_ALWAYS_OBSERVE = "always_observe"
 BASELINE_MARKET_IMPLIED = "market_implied_probability_only"
 BASELINE_STRATEGY_V1 = "strategy_v1"
+BASELINE_STRATEGY_V2 = "strategy_v2_candidate"
 BASELINE_HINT_THRESHOLD = "hint_threshold_policy"
 BASELINE_RANDOM_NAIVE = "random_naive_policy"
 
@@ -41,6 +45,7 @@ REQUIRED_BASELINES = [
     BASELINE_ALWAYS_OBSERVE,
     BASELINE_MARKET_IMPLIED,
     BASELINE_STRATEGY_V1,
+    BASELINE_STRATEGY_V2,
     BASELINE_HINT_THRESHOLD,
     BASELINE_RANDOM_NAIVE,
 ]
@@ -106,7 +111,7 @@ def run_strategy_offline_evaluation(
     )
     report = {
         "report_id": report_id,
-        "phase": "PR-V2-2",
+        "phase": "PR-V2-3",
         "created_at": datetime.now(UTC).isoformat(),
         "historical_file": str(dataset.path),
         "random_seed": random_seed,
@@ -126,7 +131,8 @@ def run_strategy_offline_evaluation(
             "evaluation_only": True,
             "can_create_orders": False,
             "mutates_paper_trading_state": False,
-            "strategy_v2_policy_implemented": False,
+            "strategy_v2_candidate_policy_included": True,
+            "strategy_v2_production_enabled": False,
             "phase8_started": False,
             "live_trading_added": False,
             "scheduler_added": False,
@@ -179,6 +185,7 @@ def _evaluate_baseline(
     rows: list[dict[str, Any]] = []
     evaluator = ForecastAssessmentEvaluator()
     strategy = PredictionMarketEdgeStrategy(risk_config)
+    strategy_v2 = PredictionMarketV2CandidateStrategy(risk_config=risk_config)
 
     for index, record in enumerate(records, start=1):
         seed = f"strategy-eval:{baseline}:{record.market_id}:{record.record_date.isoformat()}"
@@ -191,6 +198,7 @@ def _evaluate_baseline(
                     market_outcomes=market_outcomes,
                     evaluator=evaluator,
                     strategy=strategy,
+                    strategy_v2=strategy_v2,
                     rng=rng,
                     risk_config=risk_config,
                 )
@@ -218,6 +226,7 @@ def _evaluate_row(
     market_outcomes: dict[str, str],
     evaluator: ForecastAssessmentEvaluator,
     strategy: PredictionMarketEdgeStrategy,
+    strategy_v2: PredictionMarketV2CandidateStrategy,
     rng: random.Random,
     risk_config: RiskConfig,
 ) -> dict[str, Any]:
@@ -282,6 +291,21 @@ def _evaluate_row(
                 "provider_label": "mock",
             },
         )
+    elif baseline == BASELINE_STRATEGY_V2:
+        brief = ResearchBriefGenerator().generate(snapshot, list(record.evidence))
+        assessment = evaluator.evaluate(
+            brief,
+            snapshot,
+            evidence_metadata={
+                "market_source": "historical-file",
+                "data_mode": "historical_local_dataset",
+                "provider_label": "mock",
+            },
+        )
+        signal = strategy_v2.generate_signal(assessment, snapshot)
+        probability = assessment.estimated_probability_yes
+        action = signal.action
+        action_reason = signal.rationale
     elif baseline == BASELINE_HINT_THRESHOLD:
         probability = _weighted_probability_hint(list(record.evidence))
         action, action_reason = _hint_threshold_action(
@@ -346,6 +370,14 @@ def _evaluate_row(
         risk_config=risk_config,
     )
     rejection_reasons = list(assessment.rejection_reasons)
+    if baseline == BASELINE_STRATEGY_V2 and action in {
+        SignalAction.OBSERVE,
+        SignalAction.SKIP,
+    }:
+        rejection_reasons.extend(
+            str(reason)
+            for reason in signal.metadata.get("strategy_v2_reasons", [])
+        )
     if paper_outcome.get("rejection_reason"):
         rejection_reasons.append(str(paper_outcome["rejection_reason"]))
 
@@ -812,6 +844,7 @@ def _baseline_description(baseline: str) -> str:
         BASELINE_ALWAYS_OBSERVE: "Always emits observe; no structured forecast or trade.",
         BASELINE_MARKET_IMPLIED: "Uses market-implied probability for forecast metrics and never claims edge.",
         BASELINE_STRATEGY_V1: "Runs current PredictionMarketEdgeStrategy unchanged against mock research briefs.",
+        BASELINE_STRATEGY_V2: "Runs the Strategy v2 candidate policy in offline evaluation only.",
         BASELINE_HINT_THRESHOLD: "Uses historical probability_hint metadata with fixed v1-style thresholds.",
         BASELINE_RANDOM_NAIVE: "Fixed-seed random action/probability diagnostic baseline.",
     }[baseline]
@@ -944,7 +977,8 @@ def _markdown_report(report: dict[str, Any]) -> str:
             "- Paper-only: true",
             "- Local-only: true",
             "- Evaluation-only: true",
-            "- Strategy v2 policy implemented: false",
+            "- Strategy v2 candidate included: true",
+            "- Strategy v2 production enabled: false",
             "- Live trading added: false",
             "- Scheduler added: false",
             "- Direct LLM-to-order path: false",

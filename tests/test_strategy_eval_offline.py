@@ -8,6 +8,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 import local_market_agent.eval.offline_strategy as offline_strategy_module
+import local_market_agent.operations.phase7_daily as phase7_daily_module
 from local_market_agent.cli import app
 from local_market_agent.eval.offline_strategy import (
     REQUIRED_BASELINES,
@@ -139,12 +140,27 @@ def test_strategy_eval_offline_cli_writes_json_and_markdown_reports(tmp_path):
     assert Path(payload["markdown_path"]).exists()
 
 
-def test_strategy_eval_offline_adds_no_strategy_v2_policy():
-    source = inspect.getsource(offline_strategy_module)
+def test_strategy_v2_appears_in_offline_evaluation_report(tmp_path):
+    result = run_strategy_offline_evaluation(
+        historical_file=HISTORICAL_FIXTURE,
+        output_dir=tmp_path,
+    )
+    report = result.report
 
-    assert "StrategyV2" not in source
+    assert "strategy_v2_candidate" in report["baselines"]
+    assert report["baselines"]["strategy_v2_candidate"]["metrics"]["activity"][
+        "evaluated_rows"
+    ] == 5
+    assert report["safety"]["strategy_v2_candidate_policy_included"] is True
+    assert report["safety"]["strategy_v2_production_enabled"] is False
+
+
+def test_strategy_v2_is_not_used_by_phase7_daily_runner():
+    source = inspect.getsource(phase7_daily_module)
+
+    assert "PredictionMarketV2CandidateStrategy" not in source
+    assert "prediction_market_v2" not in source
     assert "strategy_v2_candidate" not in source
-    assert "candidate_policy" not in source
 
 
 def test_strategy_eval_offline_adds_no_broker_live_or_order_apis():

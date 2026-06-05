@@ -115,6 +115,7 @@ class ForecastAssessmentEvaluator:
             "provider_label": metadata.get("provider_label"),
             "provider_confidence": brief.confidence,
             "provider_evidence_quality": brief.evidence_quality,
+            "recommended_action": brief.recommended_action.value,
             "forecast_confidence_source": (
                 "calibrated_metadata" if forecast_confidence is not None else "missing"
             ),

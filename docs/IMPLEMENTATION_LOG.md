@@ -334,3 +334,15 @@
 - Safety audit result: PR-V2-2 remained paper-only, local-only, and evaluation-only. It added no Strategy v2 policy, production trading decision change, broker API, live order code, real-money execution, scheduler, daemon, autostart, risk approval path, risk gate mutation, paper ledger mutation, automatic downloader, leverage, derivatives, shorting, withdrawal, or direct LLM-to-order path.
 - Conclusion: the repository now has an offline harness that can evaluate local historical forecasts, compare required baselines, emit JSON/Markdown reports, and enforce sample-size labeling so the five-row fixture cannot support superiority claims.
 - Next action: PR-V2-3 Strategy v2 candidate policy only after review; do not start Phase 8, broker integration, live trading, scheduler, daemon, or threshold tuning from the five-row fixture.
+
+## PR-V2-3 - Strategy v2 Candidate Policy
+
+- Status: completed.
+- Files changed: Strategy v2 candidate policy module, strategy exports, forecast assessment recommendation provenance, offline harness Strategy v2 comparator, focused Strategy v2 and offline harness tests, `docs/PHASE_V2_PR_3_STRATEGY_V2_CANDIDATE.md`, and `docs/IMPLEMENTATION_LOG.md`.
+- Validation commands run: `PYTHONPATH=src .venv/bin/pytest tests/test_strategy_v2_candidate.py tests/test_strategy_eval_offline.py -vv`, `PYTHONPATH=src .venv/bin/ruff check .`, `PYTHONPATH=src .venv/bin/pytest`, `PYTHONPATH=src .venv/bin/lma strategy-eval-offline --historical-file data/fixtures/phase7_historical_5d.jsonl --output-dir data/reports/strategy_eval`.
+- Test results: focused Strategy v2/offline tests passed with 18 passed; ruff passed; full pytest passed with 125 passed and 1 optional network test skipped.
+- Offline smoke result: generated reports under `data/reports/strategy_eval/`; baselines included `strategy_v2_candidate`, dataset classification remained `fixture_smoke`, and `superiority_claim_allowed=false`.
+- Strategy v2 policy result: candidate consumes `ForecastAssessment` and `MarketSnapshot`, emits normal `Signal` objects with `strategy_name=prediction_market_v2_candidate`, requires structured probability completeness, blocks prose-only/missing/market-implied-only forecasts, allows hint-derived probabilities only in local evaluation context, and uses executable-side YES/NO EV after fee, slippage, spread, and uncertainty buffers.
+- Safety audit result: PR-V2-3 remained paper-only, local-only, and offline-evaluation-first. It added no Phase 8, broker API, live order code, real-money execution, scheduler, daemon, autostart, production replacement of Strategy v1, risk engine redesign, risk gate redesign, paper ledger mutation, threshold tuning, leverage, derivatives, shorting, withdrawal, or direct LLM-to-order path.
+- Conclusion: Strategy v2 candidate is now available for offline comparison only; Phase 7 daily runner remains on Strategy v1.
+- Next action: PR-V2-4 comparison report and acceptance gate; do not start Phase 8, broker integration, live trading, scheduler, daemon, or production replacement work.
