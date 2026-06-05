@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -11,6 +11,7 @@ from local_market_agent.adapters import (
     PolymarketAdapter,
     YFinanceAdapter,
 )
+from local_market_agent.operations.phase7_historical_dataset import load_historical_dataset
 from local_market_agent.schemas import EvidenceItem, Market, MarketSnapshot
 from local_market_agent.schemas.models import MarketStatus, MarketType, new_id
 
@@ -18,15 +19,18 @@ MARKET_SOURCE_FIXTURE = "fixture"
 MARKET_SOURCE_POLYMARKET = "polymarket"
 MARKET_SOURCE_KALSHI = "kalshi"
 MARKET_SOURCE_YFINANCE = "yfinance"
+MARKET_SOURCE_HISTORICAL_FILE = "historical-file"
 SUPPORTED_MARKET_SOURCES = {
     MARKET_SOURCE_FIXTURE,
     MARKET_SOURCE_POLYMARKET,
     MARKET_SOURCE_KALSHI,
     MARKET_SOURCE_YFINANCE,
+    MARKET_SOURCE_HISTORICAL_FILE,
 }
 
 DATA_MODE_FIXTURE = "fixture"
 DATA_MODE_CURRENT_SNAPSHOT = "current_snapshot"
+DATA_MODE_HISTORICAL_LOCAL = "historical_local_dataset"
 
 
 @dataclass(frozen=True)
@@ -43,6 +47,17 @@ class Phase7MarketDataAudit:
     profitability_claims_meaningful: bool
     requires_market_id: bool
     evidence_source: str
+    historical_file: str | None = None
+    historical_record_count: int | None = None
+    historical_start_date: str | None = None
+    historical_end_date: str | None = None
+    historical_record_date: str | None = None
+    historical_dataset_warnings: tuple[str, ...] = ()
+    evidence_count: int = 0
+    has_settlement: bool = False
+    settlement_coverage: str = "not_applicable"
+    settlement_outcome: str | None = None
+    closed_position_evaluation_supported: bool = False
     configuration_error: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -59,6 +74,17 @@ class Phase7MarketDataAudit:
             "profitability_claims_meaningful": self.profitability_claims_meaningful,
             "requires_market_id": self.requires_market_id,
             "evidence_source": self.evidence_source,
+            "historical_file": self.historical_file,
+            "historical_record_count": self.historical_record_count,
+            "historical_start_date": self.historical_start_date,
+            "historical_end_date": self.historical_end_date,
+            "historical_record_date": self.historical_record_date,
+            "historical_dataset_warnings": list(self.historical_dataset_warnings),
+            "evidence_count": self.evidence_count,
+            "has_settlement": self.has_settlement,
+            "settlement_coverage": self.settlement_coverage,
+            "settlement_outcome": self.settlement_outcome,
+            "closed_position_evaluation_supported": self.closed_position_evaluation_supported,
             "configuration_error": self.configuration_error,
         }
 
@@ -83,10 +109,14 @@ def phase7_market_data_audit(
     market_source: str | None,
     *,
     market_id: str | None = None,
+    historical_file: str | Path | None = None,
 ) -> Phase7MarketDataAudit:
     source = normalize_market_source(market_source)
     market_id = _optional_text(market_id)
     is_fixture = source == MARKET_SOURCE_FIXTURE
+    is_historical_file = source == MARKET_SOURCE_HISTORICAL_FILE
+    if is_historical_file:
+        return _historical_file_audit(market_id=market_id, historical_file=historical_file)
     requires_market_id = not is_fixture
     configuration_error = None
     if requires_market_id and not market_id:
@@ -120,9 +150,14 @@ def load_phase7_market_inputs(
     raw_cache_dir: Path,
     now: datetime,
     refresh_market_timestamp: bool,
+    historical_file: str | Path | None = None,
 ) -> Phase7MarketInputs:
     market_id = _optional_text(market_id)
-    audit = phase7_market_data_audit(market_source, market_id=market_id)
+    audit = phase7_market_data_audit(
+        market_source,
+        market_id=market_id,
+        historical_file=historical_file,
+    )
     if audit.configuration_error:
         raise ValueError(audit.configuration_error)
 
@@ -139,16 +174,113 @@ def load_phase7_market_inputs(
     elif audit.market_source == MARKET_SOURCE_YFINANCE:
         snapshot = _yfinance_snapshot(str(market_id))
         evidence = []
+    elif audit.market_source == MARKET_SOURCE_HISTORICAL_FILE:
+        dataset = load_historical_dataset(historical_file)
+        record = dataset.record_for_date(now.date(), market_id=market_id)
+        snapshot = record.to_snapshot()
+        evidence = list(record.evidence)
+        audit = replace(
+            audit,
+            market_id=record.market_id,
+            historical_record_date=record.record_date.isoformat(),
+            evidence_source="historical-file" if record.evidence else "missing",
+            evidence_count=len(record.evidence),
+            settlement_outcome=record.settlement_outcome,
+        )
     else:
         # normalize_market_source prevents this branch; keep it for type checkers.
         msg = f"unsupported market source '{audit.market_source}'"
         raise ValueError(msg)
 
-    if refresh_market_timestamp:
+    if refresh_market_timestamp and audit.market_source != MARKET_SOURCE_HISTORICAL_FILE:
         snapshot = snapshot.model_copy(
             update={"snapshot_id": new_id("snapshot"), "as_of": _as_utc(now)}
         )
     return Phase7MarketInputs(snapshot=snapshot, evidence=evidence, audit=audit)
+
+
+def _historical_file_audit(
+    *,
+    market_id: str | None,
+    historical_file: str | Path | None,
+) -> Phase7MarketDataAudit:
+    if historical_file is None:
+        return Phase7MarketDataAudit(
+            market_source=MARKET_SOURCE_HISTORICAL_FILE,
+            market_id=market_id,
+            data_mode=DATA_MODE_HISTORICAL_LOCAL,
+            network_calls_enabled=False,
+            is_fixture=False,
+            is_historical=True,
+            is_snapshot_only=False,
+            read_only=True,
+            can_create_orders=False,
+            profitability_claims_meaningful=False,
+            requires_market_id=False,
+            evidence_source="unknown",
+            historical_file=None,
+            configuration_error=(
+                "--historical-file is required when --market-source is historical-file"
+            ),
+        )
+    dataset = load_historical_dataset(historical_file)
+    selected_market_id = market_id or dataset.default_market_id()
+    configuration_error = None
+    if selected_market_id is None:
+        configuration_error = (
+            "historical dataset contains multiple market ids; provide --market-id to select one"
+        )
+    elif selected_market_id not in dataset.market_ids:
+        configuration_error = (
+            f"historical dataset has no records for market_id={selected_market_id}"
+        )
+    if configuration_error is None:
+        selected_records = dataset.records_for_market(selected_market_id)
+        start_date, end_date = dataset.range_for_market(selected_market_id)
+        has_settlement = dataset.has_settlement_for_market(selected_market_id)
+        has_evidence = dataset.has_evidence_for_market(selected_market_id)
+        settlement_coverage = dataset.settlement_coverage_for_market(selected_market_id)
+        warnings = list(dataset.warnings)
+        if not has_settlement and dataset.has_settlement:
+            warnings.append(
+                "Selected historical market has no settlement/outcome fields; "
+                "final profitability claims are not meaningful."
+            )
+        if not has_evidence and dataset.has_evidence:
+            warnings.append(
+                "Selected historical market has no evidence records; research evidence "
+                "is missing/limited."
+            )
+    else:
+        selected_records = dataset.records
+        start_date, end_date = (dataset.start_date, dataset.end_date)
+        has_settlement = dataset.has_settlement
+        has_evidence = dataset.has_evidence
+        settlement_coverage = dataset.settlement_coverage
+        warnings = list(dataset.warnings)
+    return Phase7MarketDataAudit(
+        market_source=MARKET_SOURCE_HISTORICAL_FILE,
+        market_id=selected_market_id,
+        data_mode=DATA_MODE_HISTORICAL_LOCAL,
+        network_calls_enabled=False,
+        is_fixture=False,
+        is_historical=True,
+        is_snapshot_only=False,
+        read_only=True,
+        can_create_orders=False,
+        profitability_claims_meaningful=has_settlement,
+        requires_market_id=False,
+        evidence_source="historical-file" if has_evidence else "missing",
+        historical_file=str(Path(historical_file)),
+        historical_record_count=len(selected_records),
+        historical_start_date=start_date.isoformat(),
+        historical_end_date=end_date.isoformat(),
+        historical_dataset_warnings=tuple(warnings),
+        has_settlement=has_settlement,
+        settlement_coverage=settlement_coverage,
+        closed_position_evaluation_supported=has_settlement,
+        configuration_error=configuration_error,
+    )
 
 
 def _yfinance_snapshot(symbol: str) -> MarketSnapshot:

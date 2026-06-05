@@ -77,6 +77,18 @@ Non-fixture sandbox runs are labeled as snapshot-repeated workflows. They check
 workflow correctness against read-only current data, not historical strategy
 profitability. Phase 7 still does not execute real trades.
 
+Local historical JSONL datasets can be used for sandbox validation:
+
+```bash
+lma phase7-sandbox-run \
+  --market-source historical-file \
+  --historical-file data/fixtures/phase7_historical_5d.jsonl \
+  --days 5
+```
+
+Historical-file mode is local-only and uses date-specific rows. Profitability
+claims are marked meaningful only when settlement/outcome data is present.
+
 ## Dashboard
 
 ```bash

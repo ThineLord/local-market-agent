@@ -35,6 +35,7 @@ def _settings(
     *,
     market_source: str | None = None,
     market_id: str | None = None,
+    historical_file: Path | None = None,
     llm_provider: str | None = None,
     llm_model: str | None = None,
     llm_base_url: str | None = None,
@@ -45,6 +46,7 @@ def _settings(
         db is None
         and market_source is None
         and market_id is None
+        and historical_file is None
         and llm_provider is None
         and llm_model is None
         and llm_base_url is None
@@ -59,6 +61,7 @@ def _settings(
         human_approval_required=settings.human_approval_required,
         market_source=market_source or settings.market_source,
         market_id=normalized_market_id if market_id is not None else settings.market_id,
+        historical_file=historical_file or settings.historical_file,
         llm_provider=llm_provider or settings.llm_provider,
         openai_compatible_base_url=llm_base_url or settings.openai_compatible_base_url,
         openai_compatible_model=llm_model or settings.openai_compatible_model,
@@ -298,7 +301,10 @@ def market_data_audit_command(
         str | None,
         typer.Option(
             "--market-source",
-            help="Read-only market source: fixture, polymarket, kalshi, or yfinance.",
+            help=(
+                "Read-only market source: fixture, historical-file, polymarket, "
+                "kalshi, or yfinance."
+            ),
         ),
     ] = None,
     market_id: Annotated[
@@ -308,12 +314,25 @@ def market_data_audit_command(
             help="Market identifier for non-fixture read-only sources.",
         ),
     ] = None,
+    historical_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--historical-file",
+            help="Local JSONL historical dataset for --market-source historical-file.",
+        ),
+    ] = None,
 ) -> None:
-    settings = _settings(None, market_source=market_source, market_id=market_id)
+    settings = _settings(
+        None,
+        market_source=market_source,
+        market_id=market_id,
+        historical_file=historical_file,
+    )
     try:
         audit = phase7_market_data_audit(
             settings.market_source,
             market_id=settings.market_id,
+            historical_file=settings.historical_file,
         ).as_dict()
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -332,7 +351,10 @@ def phase7_run_daily(
         str | None,
         typer.Option(
             "--market-source",
-            help="Read-only market source: fixture, polymarket, kalshi, or yfinance.",
+            help=(
+                "Read-only market source: fixture, historical-file, polymarket, "
+                "kalshi, or yfinance."
+            ),
         ),
     ] = None,
     market_id: Annotated[
@@ -340,6 +362,13 @@ def phase7_run_daily(
         typer.Option(
             "--market-id",
             help="Market identifier for non-fixture read-only sources.",
+        ),
+    ] = None,
+    historical_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--historical-file",
+            help="Local JSONL historical dataset for --market-source historical-file.",
         ),
     ] = None,
     db: Annotated[Path | None, typer.Option(help="SQLite database path.")] = None,
@@ -381,6 +410,7 @@ def phase7_run_daily(
         db,
         market_source=market_source,
         market_id=market_id,
+        historical_file=historical_file,
         llm_provider=llm_provider,
         llm_model=llm_model,
         llm_base_url=llm_base_url,
@@ -395,6 +425,7 @@ def phase7_run_daily(
         refresh_market_timestamp=refresh_market_timestamp,
         market_source=settings.market_source,
         market_id=settings.market_id,
+        historical_file=settings.historical_file,
     ).run(
         dry_run=dry_run,
         require_manual_approval=require_manual_approval,
@@ -405,6 +436,9 @@ def phase7_run_daily(
             "evidence": str(evidence),
             "market_source": settings.market_source,
             "market_id": settings.market_id,
+            "historical_file": str(settings.historical_file)
+            if settings.historical_file is not None
+            else None,
             "db": str(settings.db_path),
             "report_dir": str(report_dir),
             "dry_run": dry_run,
@@ -461,7 +495,10 @@ def phase7_sandbox_run(
         str | None,
         typer.Option(
             "--market-source",
-            help="Read-only market source: fixture, polymarket, kalshi, or yfinance.",
+            help=(
+                "Read-only market source: fixture, historical-file, polymarket, "
+                "kalshi, or yfinance."
+            ),
         ),
     ] = None,
     market_id: Annotated[
@@ -469,6 +506,13 @@ def phase7_sandbox_run(
         typer.Option(
             "--market-id",
             help="Market identifier for non-fixture read-only sources.",
+        ),
+    ] = None,
+    historical_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--historical-file",
+            help="Local JSONL historical dataset for --market-source historical-file.",
         ),
     ] = None,
     db: Annotated[Path | None, typer.Option(help="SQLite database path.")] = None,
@@ -534,6 +578,7 @@ def phase7_sandbox_run(
         db,
         market_source=market_source,
         market_id=market_id,
+        historical_file=historical_file,
         llm_provider=llm_provider,
         llm_model=llm_model,
         llm_base_url=llm_base_url,
@@ -552,6 +597,7 @@ def phase7_sandbox_run(
             refresh_market_timestamp=refresh_market_timestamp,
             market_source=settings.market_source,
             market_id=settings.market_id,
+            historical_file=settings.historical_file,
         ).run(
             start_date=parsed_start_date,
             end_date=parsed_end_date,

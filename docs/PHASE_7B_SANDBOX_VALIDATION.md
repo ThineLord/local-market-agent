@@ -59,6 +59,19 @@ lma phase7-sandbox-run \
 Non-fixture sandbox runs are labeled `snapshot repeated sandbox`. They are not
 historical backtests and profitability claims are not meaningful.
 
+Run the sandbox against a local historical JSONL dataset:
+
+```bash
+lma phase7-sandbox-run \
+  --market-source historical-file \
+  --historical-file data/fixtures/phase7_historical_5d.jsonl \
+  --days 5
+```
+
+Historical-file runs use one local row per simulated date. They are labeled as
+historical local datasets, and profitability is marked meaningful only when
+settlement/outcome fields are present.
+
 The command prints the sandbox summary JSON and writes the same JSON to:
 
 ```text
@@ -87,6 +100,9 @@ share a mutable snapshot reference.
 
 Phase 7C PR-D1 also allows explicit read-only current snapshot sources. These
 sources do not provide historical day-by-day sandbox data in this implementation.
+
+Phase 7C PR-D2 adds local JSONL historical datasets. This remains a local file
+path, not an automatic data download or cloud ingestion path.
 
 The deterministic model context is only used by the sandbox. Normal Phase 7
 daily runs continue to use regular UUID-based ids and the current UTC clock.
@@ -148,8 +164,9 @@ and `mutation_detected`.
 
 - Fixture mode reuses the existing deterministic fixture market and evidence
   set.
-- Non-fixture mode uses current snapshots only; it does not introduce a new
-  historical data provider.
+- Current snapshot mode uses current snapshots only.
+- Historical-file mode uses local JSONL rows and still depends on dataset
+  quality, settlement fields, and paper-fill assumptions.
 - Sandbox total return, drawdown, win rate, and profit factor are workflow
   diagnostics unless backed by true historical market states and settlements.
 - A real OpenAI-compatible provider may make research network calls only when

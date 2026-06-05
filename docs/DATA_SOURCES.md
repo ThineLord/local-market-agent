@@ -22,6 +22,8 @@ Phase 7 daily and sandbox commands default to `--market-source fixture`.
 Supported explicit sources:
 
 - `fixture`: deterministic offline market and evidence fixtures.
+- `historical-file`: local JSONL historical market rows; requires
+  `--historical-file` and may require `--market-id` for multi-market files.
 - `polymarket`: read-only current public market snapshot; requires `--market-id`.
 - `kalshi`: read-only current public market snapshot; requires `--market-id`.
 - `yfinance`: latest OHLCV row as a read-only snapshot; requires `--market-id`.
@@ -34,3 +36,9 @@ Current snapshot sandbox runs are not historical backtests. Meaningful
 profitability evaluation requires time-indexed historical market snapshots,
 time-appropriate evidence, fill/settlement assumptions, and benchmark
 methodology that PR-D1 intentionally does not add.
+
+PR-D2 adds `historical-file` for local JSONL datasets. This mode uses one row per
+simulated date and does not reuse a current snapshot across the range. It only
+marks profitability claims as meaningful when historical settlement/outcome
+metadata is present. See `docs/PHASE_7C_PR_D2_HISTORICAL_DATASET.md` for the
+schema and backtest boundary.

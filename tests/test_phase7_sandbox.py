@@ -208,6 +208,121 @@ def test_phase7_sandbox_inherits_non_fixture_market_source_without_network(
     assert len(repo.list_paper_orders()) == 0
 
 
+def test_phase7_historical_sandbox_uses_date_specific_records_and_replays(tmp_path):
+    settings = _settings(tmp_path)
+    repo = SQLiteRepository(settings.db_path)
+    runner = Phase7SandboxRunner(
+        repository=repo,
+        settings=settings,
+        report_dir=tmp_path / "reports",
+        market_source="historical-file",
+        historical_file=Path("data/fixtures/phase7_historical_5d.jsonl"),
+    )
+
+    result = runner.run(days=5, require_manual_approval=False, replay_sample_size=1)
+
+    assert result.summary["market_source"] == "historical-file"
+    assert result.summary["data_mode"] == "historical_local_dataset"
+    assert result.summary["local_only"] is True
+    assert result.summary["deterministic"] is True
+    assert result.summary["profitability_claims_meaningful"] is True
+    assert result.summary["sandbox_data_semantics"]["label"] == (
+        "historical local dataset with settlement"
+    )
+    assert result.summary["sandbox_data_semantics"]["historical_market_data"] is True
+    assert result.summary["sandbox_data_semantics"]["snapshot_only"] is False
+    assert result.summary["market_data"]["has_settlement"] is True
+    assert result.summary["market_data"]["settlement_coverage"] == "partial"
+    assert result.summary["market_data"]["closed_position_evaluation_supported"] is True
+    assert result.summary["status_counts"]["completed"] == 4
+    assert result.summary["status_counts"]["rejected"] == 1
+    assert result.summary["win_rate"] == 1.0
+    assert result.summary["profit_factor"] is None
+    assert result.summary["replay_validation_sample_results"][0]["ok"] is True
+
+    snapshots = [repo.load_market_snapshot(record.snapshot_id) for record in result.records]
+    assert [snapshot.last_price for snapshot in snapshots if snapshot is not None] == [
+        0.49,
+        0.51,
+        0.53,
+        0.56,
+        0.95,
+    ]
+    assert len({record.snapshot_id for record in result.records}) == 5
+    assert [
+        record.metadata["market_data"]["historical_record_date"]
+        for record in result.records
+    ] == [
+        "2026-05-01",
+        "2026-05-02",
+        "2026-05-03",
+        "2026-05-04",
+        "2026-05-05",
+    ]
+    assert any(
+        "Historical local settlement closed" in reason
+        for record in result.records
+        for reason in record.reasons
+    )
+    assert all(not position.is_open for position in repo.list_positions())
+
+    replay = Phase7ReplayService(repo).replay(result.records[0].run_id)
+    assert replay.ok is True
+
+
+def test_phase7_historical_sandbox_without_settlement_warns_and_blocks_profit_claim(
+    tmp_path,
+):
+    historical_file = tmp_path / "history-without-settlement.jsonl"
+    rows = [
+        _minimal_historical_row("2026-05-01", 0.48, 0.50, 0.49),
+        _minimal_historical_row("2026-05-02", 0.50, 0.52, 0.51),
+    ]
+    _write_jsonl(historical_file, rows)
+    settings = _settings(tmp_path)
+    repo = SQLiteRepository(settings.db_path)
+    runner = Phase7SandboxRunner(
+        repository=repo,
+        settings=settings,
+        report_dir=tmp_path / "reports",
+        market_source="historical-file",
+        historical_file=historical_file,
+    )
+
+    result = runner.run(days=2, require_manual_approval=False, replay_sample_size=0)
+
+    assert result.summary["market_source"] == "historical-file"
+    assert result.summary["profitability_claims_meaningful"] is False
+    assert result.summary["sandbox_data_semantics"]["label"] == (
+        "historical local dataset without settlement"
+    )
+    assert result.summary["market_data"]["has_settlement"] is False
+    assert result.summary["market_data"]["settlement_coverage"] == "none"
+    assert any(
+        "no settlement" in warning.lower()
+        for warning in result.summary["market_data"]["historical_dataset_warnings"]
+    )
+
+
+def test_phase7_historical_sandbox_rejects_malformed_record(tmp_path):
+    historical_file = tmp_path / "bad-history.jsonl"
+    row = _minimal_historical_row("2026-05-01", 0.50, 0.52, 0.51)
+    row.pop("bid")
+    _write_jsonl(historical_file, [row])
+    settings = _settings(tmp_path)
+    repo = SQLiteRepository(settings.db_path)
+    runner = Phase7SandboxRunner(
+        repository=repo,
+        settings=settings,
+        report_dir=tmp_path / "reports",
+        market_source="historical-file",
+        historical_file=historical_file,
+    )
+
+    with pytest.raises(ValueError, match="bid"):
+        runner.run(days=1, require_manual_approval=False)
+
+
 def test_phase7_sandbox_rejects_live_execution_flags(tmp_path):
     _, runner = _sandbox_runner(tmp_path, allow_live_orders=True)
 
@@ -223,3 +338,46 @@ def _run_repeatable_sandbox(tmp_path: Path) -> dict[str, object]:
 
 def _counts(repo: SQLiteRepository) -> dict[str, int]:
     return {table: repo.count(table) for table in sorted(SQLiteRepository.TABLES)}
+
+
+def _minimal_historical_row(
+    date: str,
+    bid: float,
+    ask: float,
+    last_price: float,
+) -> dict[str, object]:
+    return {
+        "date": date,
+        "market_id": "hist-without-settlement",
+        "bid": bid,
+        "ask": ask,
+        "last_price": last_price,
+        "implied_probability": round((bid + ask) / 2, 4),
+        "evidence": [
+            {
+                "source": "test",
+                "title": f"Evidence for {date}",
+                "published_at": f"{date}T10:00:00Z",
+                "summary": "Local evidence is available before the simulated close.",
+                "relevance_score": 0.9,
+                "credibility_score": 0.9,
+                "metadata": {"probability_hint": 0.7},
+            },
+            {
+                "source": "test",
+                "title": f"Second evidence for {date}",
+                "published_at": f"{date}T11:00:00Z",
+                "summary": "Second local evidence item avoids sparse-evidence calibration.",
+                "relevance_score": 0.88,
+                "credibility_score": 0.9,
+                "metadata": {"probability_hint": 0.69},
+            },
+        ],
+    }
+
+
+def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
+    path.write_text(
+        "\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n",
+        encoding="utf-8",
+    )

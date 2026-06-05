@@ -48,6 +48,7 @@ class Phase7DailyRunner:
     refresh_market_timestamp: bool = True
     market_source: str | None = None
     market_id: str | None = None
+    historical_file: Path | None = None
 
     def run(
         self,
@@ -65,6 +66,11 @@ class Phase7DailyRunner:
         )
         market_source = self.market_source or self.settings.market_source
         market_id = self.market_id if self.market_id is not None else self.settings.market_id
+        historical_file = (
+            self.historical_file
+            if self.historical_file is not None
+            else self.settings.historical_file
+        )
         cli_arguments = cli_arguments or _runner_cli_arguments(
             dry_run=dry_run,
             require_manual_approval=require_manual_approval,
@@ -74,12 +80,14 @@ class Phase7DailyRunner:
             report_dir=self.report_dir,
             market_source=market_source,
             market_id=market_id,
+            historical_file=historical_file,
         )
         provider_audit = llm_provider_audit(self.settings).as_dict()
         try:
             market_data_audit = phase7_market_data_audit(
                 market_source,
                 market_id=market_id,
+                historical_file=historical_file,
             ).as_dict()
         except ValueError as exc:
             market_data_audit = {
@@ -108,6 +116,7 @@ class Phase7DailyRunner:
                 raw_cache_dir=self.settings.raw_cache_dir,
                 now=started_at,
                 refresh_market_timestamp=self.refresh_market_timestamp,
+                historical_file=historical_file,
             )
             market_data_audit = market_inputs.audit.as_dict()
             context["fixture_mode"] = market_inputs.audit.is_fixture
@@ -172,6 +181,19 @@ class Phase7DailyRunner:
                     status = Phase7RunStatus.COMPLETED
                     reasons = ["Paper run completed with simulated paper order."]
 
+            settled_position_ids = _close_historical_settlement_positions(
+                ledger=ledger,
+                market_id=snapshot.market.market_id,
+                settlement_outcome=market_data_audit.get("settlement_outcome"),
+            )
+            if settled_position_ids:
+                context["settled_position_ids"] = settled_position_ids
+                portfolio_after = ledger.snapshot_portfolio(marks)
+                context["portfolio_snapshot_id"] = portfolio_after.snapshot_id
+                reasons = list(reasons) + [
+                    "Historical local settlement closed open paper positions."
+                ]
+
             report_path = self.report_dir / f"phase7_daily_report_{run_id}.md"
             report_artifact = Phase7DailyReportGenerator(
                 self.repository,
@@ -202,6 +224,7 @@ class Phase7DailyRunner:
                     "report_warnings": report_artifact.warnings,
                     "llm_provider": provider_audit,
                     "market_data": market_data_audit,
+                    "settled_position_ids": context.get("settled_position_ids", []),
                 },
             )
             record = Phase7RunRecord(
@@ -233,6 +256,7 @@ class Phase7DailyRunner:
                     "report_checksum": manifest.report_checksum,
                     "llm_provider": provider_audit,
                     "market_data": market_data_audit,
+                    "settled_position_ids": context.get("settled_position_ids", []),
                 },
             )
             self.repository.save_phase7_run_manifest(manifest)
@@ -380,6 +404,30 @@ def _marks_from_snapshot(snapshot: MarketSnapshot) -> dict[str, float]:
     return {snapshot.market.market_id: mark}
 
 
+def _close_historical_settlement_positions(
+    *,
+    ledger: PaperLedger,
+    market_id: str,
+    settlement_outcome: object,
+) -> list[str]:
+    if settlement_outcome not in {"yes", "no"}:
+        return []
+    yes_wins = settlement_outcome == "yes"
+    closed_position_ids: list[str] = []
+    for position in ledger.open_positions():
+        if position.market_id != market_id:
+            continue
+        if position.side == OrderSide.BUY_YES:
+            close_price = 1.0 if yes_wins else 0.0
+        elif position.side == OrderSide.BUY_NO:
+            close_price = 0.0 if yes_wins else 1.0
+        else:
+            continue
+        closed = ledger.close_position(position.position_id, close_price=close_price)
+        closed_position_ids.append(closed.position_id)
+    return closed_position_ids
+
+
 def _status_from_gate(decision: RiskGateDecision) -> Phase7RunStatus:
     if decision.status == RiskGateDecisionStatus.HALTED:
         return Phase7RunStatus.HALTED
@@ -410,6 +458,7 @@ def _runner_cli_arguments(
     report_dir: Path,
     market_source: str,
     market_id: str | None,
+    historical_file: Path | None,
 ) -> dict[str, Any]:
     return {
         "source": "runner",
@@ -418,6 +467,7 @@ def _runner_cli_arguments(
         "refresh_market_timestamp": refresh_market_timestamp,
         "market_source": market_source,
         "market_id": market_id,
+        "historical_file": str(historical_file) if historical_file is not None else None,
         "fixture": str(market_fixture),
         "evidence": str(evidence_fixture),
         "report_dir": str(report_dir),

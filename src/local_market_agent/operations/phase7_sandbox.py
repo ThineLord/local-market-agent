@@ -11,8 +11,10 @@ from local_market_agent.adapters import FixtureAdapter
 from local_market_agent.config import Settings
 from local_market_agent.llm import llm_provider_audit
 from local_market_agent.operations.phase7_daily import Phase7DailyRunner
+from local_market_agent.operations.phase7_historical_dataset import load_historical_dataset
 from local_market_agent.operations.phase7_market_data import (
     MARKET_SOURCE_FIXTURE,
+    MARKET_SOURCE_HISTORICAL_FILE,
     normalize_market_source,
     phase7_market_data_audit,
 )
@@ -56,6 +58,7 @@ class Phase7SandboxRunner:
     refresh_market_timestamp: bool = True
     market_source: str | None = None
     market_id: str | None = None
+    historical_file: Path | None = None
 
     def run(
         self,
@@ -71,7 +74,16 @@ class Phase7SandboxRunner:
         _assert_paper_only(self.settings)
         market_source = self.market_source or self.settings.market_source
         market_id = self.market_id if self.market_id is not None else self.settings.market_id
-        market_data = phase7_market_data_audit(market_source, market_id=market_id)
+        historical_file = (
+            self.historical_file
+            if self.historical_file is not None
+            else self.settings.historical_file
+        )
+        market_data = phase7_market_data_audit(
+            market_source,
+            market_id=market_id,
+            historical_file=historical_file,
+        )
         date_range = resolve_sandbox_date_range(
             market_fixture=self.market_fixture,
             evidence_fixture=self.evidence_fixture,
@@ -79,13 +91,22 @@ class Phase7SandboxRunner:
             end_date=end_date,
             days=days,
             market_source=market_source,
+            market_id=market_id,
+            historical_file=historical_file,
         )
+        if market_data.market_source == MARKET_SOURCE_HISTORICAL_FILE:
+            load_historical_dataset(historical_file).validate_date_range(
+                date_range.start_date,
+                date_range.end_date,
+                market_id=market_data.market_id,
+            )
         sandbox_id = sandbox_id or _sandbox_id(
             date_range=date_range,
             market_fixture=self.market_fixture,
             evidence_fixture=self.evidence_fixture,
             market_source=market_source,
             market_id=market_id,
+            historical_file=historical_file,
             dry_run=dry_run,
             require_manual_approval=require_manual_approval,
             refresh_market_timestamp=self.refresh_market_timestamp,
@@ -101,6 +122,7 @@ class Phase7SandboxRunner:
             refresh_market_timestamp=self.refresh_market_timestamp,
             market_source=market_source,
             market_id=market_id,
+            historical_file=historical_file,
         )
 
         for simulated_date in date_range.dates():
@@ -120,6 +142,9 @@ class Phase7SandboxRunner:
                         "evidence": str(self.evidence_fixture),
                         "market_source": market_source,
                         "market_id": market_id,
+                        "historical_file": str(historical_file)
+                        if historical_file is not None
+                        else None,
                         "db": str(self.settings.db_path),
                         "report_dir": str(self.report_dir),
                         "dry_run": dry_run,
@@ -153,6 +178,7 @@ class Phase7SandboxRunner:
             market_data=market_data.as_dict(),
             market_source=market_source,
             market_id=market_id,
+            historical_file=historical_file,
         )
         output = self._summary_path(sandbox_id, date_range)
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -177,8 +203,15 @@ def resolve_sandbox_date_range(
     end_date: date | None = None,
     days: int | None = None,
     market_source: str | None = MARKET_SOURCE_FIXTURE,
+    market_id: str | None = None,
+    historical_file: Path | None = None,
 ) -> SandboxDateRange:
+    source = normalize_market_source(market_source)
     if days is None and start_date is None and end_date is None:
+        if source == MARKET_SOURCE_HISTORICAL_FILE:
+            dataset = load_historical_dataset(historical_file)
+            start_date, end_date = dataset.range_for_market(market_id)
+            return SandboxDateRange(start_date=start_date, end_date=end_date)
         days = 30
     if days is not None and days <= 0:
         msg = "sandbox days must be greater than zero"
@@ -192,9 +225,11 @@ def resolve_sandbox_date_range(
     elif days is not None and end_date is not None:
         start_date = end_date - timedelta(days=days - 1)
     elif days is not None:
-        source = normalize_market_source(market_source)
         if source == MARKET_SOURCE_FIXTURE:
             end_date = FixtureAdapter(market_fixture, evidence_fixture).fetch_snapshot().as_of.date()
+        elif source == MARKET_SOURCE_HISTORICAL_FILE:
+            dataset = load_historical_dataset(historical_file)
+            _start, end_date = dataset.range_for_market(market_id)
         else:
             end_date = datetime.now(UTC).date()
         start_date = end_date - timedelta(days=days - 1)
@@ -233,6 +268,7 @@ def _sandbox_id(
     evidence_fixture: Path,
     market_source: str,
     market_id: str | None,
+    historical_file: Path | None,
     dry_run: bool,
     require_manual_approval: bool | None,
     refresh_market_timestamp: bool,
@@ -245,6 +281,7 @@ def _sandbox_id(
         "evidence_fixture": str(evidence_fixture),
         "market_source": market_source,
         "market_id": market_id,
+        "historical_file": str(historical_file) if historical_file is not None else None,
         "dry_run": dry_run,
         "require_manual_approval": require_manual_approval,
         "refresh_market_timestamp": refresh_market_timestamp,
@@ -308,6 +345,7 @@ def _build_summary(
     market_data: dict[str, Any],
     market_source: str,
     market_id: str | None,
+    historical_file: Path | None,
 ) -> dict[str, Any]:
     equity_curve = _equity_curve(repository, records)
     status_counts = _status_counts(records)
@@ -322,7 +360,7 @@ def _build_summary(
         "phase": "7B",
         "execution_mode": "paper",
         "local_only": not bool(market_data.get("network_calls_enabled")),
-        "deterministic": bool(market_data.get("is_fixture")),
+        "deterministic": not bool(market_data.get("network_calls_enabled")),
         "llm_provider": llm_provider_audit(settings).as_dict(),
         "market_source": market_data["market_source"],
         "data_mode": market_data["data_mode"],
@@ -348,6 +386,7 @@ def _build_summary(
             "evidence_fixture": str(evidence_fixture),
             "market_source": market_source,
             "market_id": market_id,
+            "historical_file": str(historical_file) if historical_file is not None else None,
             "db_path": str(settings.db_path),
             "report_dir": str(report_dir),
             "dry_run": dry_run,
@@ -395,6 +434,20 @@ def _sandbox_data_semantics(market_data: dict[str, Any]) -> dict[str, Any]:
             "Deterministic fixture data is replayed through the workflow; this validates "
             "system integrity and paper controls, not real historical profitability."
         )
+    elif market_data.get("is_historical"):
+        if market_data.get("has_settlement"):
+            label = "historical local dataset with settlement"
+            note = (
+                "A local time-indexed historical dataset with settlement/outcome fields "
+                "was used; paper PnL can be interpreted only within the dataset and "
+                "paper-fill assumptions."
+            )
+        else:
+            label = "historical local dataset without settlement"
+            note = (
+                "A local time-indexed historical dataset was used, but settlement/outcome "
+                "fields are missing; final profitability claims are not meaningful."
+            )
     else:
         label = "snapshot repeated sandbox"
         note = (

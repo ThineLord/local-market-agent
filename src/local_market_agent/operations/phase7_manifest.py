@@ -55,6 +55,9 @@ def _configuration_snapshot(
         "human_approval_required": settings.human_approval_required,
         "market_source": settings.market_source,
         "market_id": settings.market_id,
+        "historical_file": str(settings.historical_file)
+        if settings.historical_file is not None
+        else None,
         "llm_provider": settings.llm_provider,
         "llm": llm_provider_audit(settings).as_dict(),
         "run_network_tests": settings.run_network_tests,

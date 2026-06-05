@@ -218,3 +218,89 @@ def test_cli_market_data_audit_reports_missing_non_fixture_market_id():
     assert payload["market_source"] == "kalshi"
     assert payload["requires_market_id"] is True
     assert "--market-id is required" in payload["configuration_error"]
+
+
+def test_cli_market_data_audit_reports_historical_file():
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "market-data-audit",
+            "--market-source",
+            "historical-file",
+            "--historical-file",
+            "data/fixtures/phase7_historical_5d.jsonl",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["market_source"] == "historical-file"
+    assert payload["data_mode"] == "historical_local_dataset"
+    assert payload["network_calls_enabled"] is False
+    assert payload["is_historical"] is True
+    assert payload["historical_record_count"] == 5
+    assert payload["historical_start_date"] == "2026-05-01"
+    assert payload["historical_end_date"] == "2026-05-05"
+    assert payload["has_settlement"] is True
+    assert payload["profitability_claims_meaningful"] is True
+    assert payload["can_create_orders"] is False
+
+
+def test_cli_market_data_audit_uses_selected_historical_market(tmp_path):
+    historical_file = tmp_path / "multi-market-history.jsonl"
+    rows = [
+        {
+            "date": "2026-05-01",
+            "market_id": "market-without-settlement",
+            "bid": 0.48,
+            "ask": 0.50,
+            "last_price": 0.49,
+        },
+        {
+            "date": "2026-05-01",
+            "market_id": "market-with-settlement",
+            "bid": 0.60,
+            "ask": 0.62,
+            "last_price": 0.61,
+            "evidence": [
+                {
+                    "title": "Selected elsewhere",
+                    "published_at": "2026-05-01T10:00:00Z",
+                }
+            ],
+            "settlement_outcome": "yes",
+        },
+    ]
+    historical_file.write_text(
+        "\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "market-data-audit",
+            "--market-source",
+            "historical-file",
+            "--historical-file",
+            str(historical_file),
+            "--market-id",
+            "market-without-settlement",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["market_id"] == "market-without-settlement"
+    assert payload["historical_record_count"] == 1
+    assert payload["has_settlement"] is False
+    assert payload["settlement_coverage"] == "none"
+    assert payload["profitability_claims_meaningful"] is False
+    assert payload["evidence_source"] == "missing"
+    assert any(
+        "selected historical market" in warning.lower()
+        for warning in payload["historical_dataset_warnings"]
+    )

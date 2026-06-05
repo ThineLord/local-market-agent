@@ -68,10 +68,11 @@ Current snapshot mode is not historical. It may exercise the workflow against a
 real current market snapshot, but it does not provide day-by-day historical
 market states or settlement outcomes.
 
-No historical profitability evaluation is added in PR-D1. A meaningful
-historical profitability evaluation would require time-indexed historical market
-snapshots, evidence available at each historical timestamp, realistic fills,
-position closing/settlement data, and a benchmark/comparison methodology.
+No historical profitability evaluation was added in PR-D1. Phase 7C PR-D2 later
+adds a local JSONL historical-file mode. A meaningful historical profitability
+evaluation still requires time-indexed historical market snapshots, evidence
+available at each historical timestamp, realistic fills, position
+closing/settlement data, and a benchmark/comparison methodology.
 
 ## Sandbox Labels
 

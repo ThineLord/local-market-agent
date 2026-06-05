@@ -94,6 +94,7 @@ class Settings:
     human_approval_required: bool = True
     market_source: str = "fixture"
     market_id: str | None = None
+    historical_file: Path | None = None
     llm_provider: str = "mock"
     openai_compatible_base_url: str = "http://localhost:1234/v1"
     openai_compatible_model: str = "local-model"
@@ -123,6 +124,9 @@ def load_settings() -> Settings:
         human_approval_required=_env_bool("HUMAN_APPROVAL_REQUIRED", True),
         market_source=os.getenv("LMA_MARKET_SOURCE", "fixture"),
         market_id=_env_str_or_none("LMA_MARKET_ID"),
+        historical_file=(
+            Path(value) if (value := _env_str_or_none("LMA_HISTORICAL_FILE")) else None
+        ),
         llm_provider=os.getenv("LMA_LLM_PROVIDER", "mock"),
         openai_compatible_base_url=os.getenv(
             "LMA_OPENAI_COMPATIBLE_BASE_URL", "http://localhost:1234/v1"

@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 
 from local_market_agent.config import RiskConfig
@@ -18,6 +17,7 @@ from local_market_agent.schemas.models import (
     RiskDecision,
     Signal,
     SignalAction,
+    utc_now,
 )
 from local_market_agent.storage import SQLiteRepository
 
@@ -155,7 +155,7 @@ class PaperLedger:
         )
         closed = position.model_copy(
             update={
-                "closed_at": datetime.now(UTC),
+                "closed_at": utc_now(),
                 "close_price": close_price,
                 "realized_pnl": realized,
                 "fees": total_fees,

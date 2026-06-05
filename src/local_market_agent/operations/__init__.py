@@ -1,4 +1,9 @@
 from local_market_agent.operations.phase7_daily import Phase7DailyRunner
+from local_market_agent.operations.phase7_historical_dataset import (
+    HistoricalDataset,
+    HistoricalMarketRecord,
+    load_historical_dataset,
+)
 from local_market_agent.operations.phase7_market_data import (
     Phase7MarketDataAudit,
     phase7_market_data_audit,
@@ -13,12 +18,15 @@ from local_market_agent.operations.phase7_sandbox import (
 
 __all__ = [
     "Phase7DailyRunner",
+    "HistoricalDataset",
+    "HistoricalMarketRecord",
     "Phase7MarketDataAudit",
     "Phase7ReplayResult",
     "Phase7ReplayService",
     "Phase7SandboxResult",
     "Phase7SandboxRunner",
     "SandboxDateRange",
+    "load_historical_dataset",
     "phase7_market_data_audit",
     "resolve_sandbox_date_range",
 ]
