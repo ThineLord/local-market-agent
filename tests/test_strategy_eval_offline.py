@@ -1,0 +1,170 @@
+from __future__ import annotations
+
+import ast
+import inspect
+import json
+from pathlib import Path
+
+from typer.testing import CliRunner
+
+import local_market_agent.eval.offline_strategy as offline_strategy_module
+from local_market_agent.cli import app
+from local_market_agent.eval.offline_strategy import (
+    REQUIRED_BASELINES,
+    run_strategy_offline_evaluation,
+)
+
+HISTORICAL_FIXTURE = Path("data/fixtures/phase7_historical_5d.jsonl")
+
+
+def test_strategy_eval_offline_evaluates_5_day_historical_fixture(tmp_path):
+    result = run_strategy_offline_evaluation(
+        historical_file=HISTORICAL_FIXTURE,
+        output_dir=tmp_path,
+    )
+
+    assert result.json_path.exists()
+    assert result.markdown_path.exists()
+    assert result.report["dataset"]["evaluated_rows"] == 5
+    assert result.report["dataset"]["markets_evaluated"] == 1
+    assert result.report["dataset"]["classification"] == "fixture_smoke"
+    assert set(result.report["baselines"]) == set(REQUIRED_BASELINES)
+
+    payload = json.loads(result.json_path.read_text())
+    assert payload["report_id"] == result.report["report_id"]
+    assert "Strategy Offline Evaluation Report" in result.markdown_path.read_text()
+
+
+def test_strategy_eval_offline_produces_required_baseline_metric_sections(tmp_path):
+    result = run_strategy_offline_evaluation(
+        historical_file=HISTORICAL_FIXTURE,
+        output_dir=tmp_path,
+    )
+
+    for baseline_name in REQUIRED_BASELINES:
+        baseline = result.report["baselines"][baseline_name]
+        assert len(baseline["rows"]) == 5
+        assert set(baseline["metrics"]) == {
+            "activity",
+            "forecast",
+            "paper_outcome",
+            "risk_reliability",
+        }
+        assert baseline["metrics"]["activity"]["evaluated_rows"] == 5
+
+
+def test_strategy_eval_offline_computes_brier_score_and_calibration_buckets(tmp_path):
+    result = run_strategy_offline_evaluation(
+        historical_file=HISTORICAL_FIXTURE,
+        output_dir=tmp_path,
+    )
+    strategy_metrics = result.report["baselines"]["strategy_v1"]["metrics"]
+    market_metrics = result.report["baselines"]["market_implied_probability_only"][
+        "metrics"
+    ]
+
+    assert strategy_metrics["forecast"]["brier_score"] == 0.07827957
+    assert market_metrics["forecast"]["brier_score"] == 0.18344
+    assert strategy_metrics["forecast"]["structured_probability_completeness_rate"] == 1.0
+
+    buckets = strategy_metrics["forecast"]["calibration_by_bucket"]
+    assert buckets["0.60-0.70"]["row_count"] == 3
+    assert buckets["0.70-0.80"]["row_count"] == 1
+    assert buckets["0.80-0.90"]["row_count"] == 1
+
+
+def test_strategy_eval_offline_computes_abstention_rate_and_below_target_label(
+    tmp_path,
+):
+    result = run_strategy_offline_evaluation(
+        historical_file=HISTORICAL_FIXTURE,
+        output_dir=tmp_path,
+    )
+    report = result.report
+
+    assert report["baselines"]["always_observe"]["metrics"]["activity"][
+        "abstention_rate"
+    ] == 1.0
+    assert report["baselines"]["strategy_v1"]["metrics"]["activity"][
+        "abstention_rate"
+    ] == 0.2
+    assert "below sample-size target" in report["dataset"]["classification_detail"]
+    assert report["dataset"]["sample_size_gates"]["evaluation_rows"]["passed"] is False
+    assert report["dataset"]["sample_size_gates"]["resolved_binary_markets"][
+        "passed"
+    ] is False
+    assert report["dataset"]["superiority_claim_allowed"] is False
+
+
+def test_strategy_eval_offline_random_baseline_is_fixed_seed_deterministic(tmp_path):
+    first = run_strategy_offline_evaluation(
+        historical_file=HISTORICAL_FIXTURE,
+        output_dir=tmp_path / "first",
+        random_seed=12345,
+    )
+    second = run_strategy_offline_evaluation(
+        historical_file=HISTORICAL_FIXTURE,
+        output_dir=tmp_path / "second",
+        random_seed=12345,
+    )
+
+    first_rows = first.report["baselines"]["random_naive_policy"]["rows"]
+    second_rows = second.report["baselines"]["random_naive_policy"]["rows"]
+    assert [row["action"] for row in first_rows] == [
+        row["action"] for row in second_rows
+    ]
+    assert [row["forecast_probability"] for row in first_rows] == [
+        row["forecast_probability"] for row in second_rows
+    ]
+
+
+def test_strategy_eval_offline_cli_writes_json_and_markdown_reports(tmp_path):
+    result = CliRunner().invoke(
+        app,
+        [
+            "strategy-eval-offline",
+            "--historical-file",
+            str(HISTORICAL_FIXTURE),
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["dataset_classification"] == "fixture_smoke"
+    assert payload["superiority_claim_allowed"] is False
+    assert set(payload["baselines"]) == set(REQUIRED_BASELINES)
+    assert Path(payload["json_path"]).exists()
+    assert Path(payload["markdown_path"]).exists()
+
+
+def test_strategy_eval_offline_adds_no_strategy_v2_policy():
+    source = inspect.getsource(offline_strategy_module)
+
+    assert "StrategyV2" not in source
+    assert "strategy_v2_candidate" not in source
+    assert "candidate_policy" not in source
+
+
+def test_strategy_eval_offline_adds_no_broker_live_or_order_apis():
+    source = inspect.getsource(offline_strategy_module)
+    tree = ast.parse(source)
+    referenced_symbols = {
+        node.id for node in ast.walk(tree) if isinstance(node, ast.Name)
+    } | {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+
+    forbidden_symbols = {
+        "PaperLedger",
+        "PaperOrder",
+        "PaperOrderIntent",
+        "RiskEngine",
+        "RiskGateEvaluator",
+        "ExecutionMode.LIVE",
+        "create_order",
+        "open_position",
+    }
+    assert forbidden_symbols.isdisjoint(referenced_symbols)
+    assert "local_market_agent.paper" not in source
+    assert "local_market_agent.risk" not in source
+    assert "broker" not in source.lower()

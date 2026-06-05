@@ -16,6 +16,7 @@ from local_market_agent.eval import (
     run_daily_provider_comparison,
     run_sandbox_provider_comparison,
 )
+from local_market_agent.eval.offline_strategy import run_strategy_offline_evaluation
 from local_market_agent.llm import (
     build_llm_provider,
     llm_provider_audit,
@@ -819,6 +820,60 @@ def phase7_research_quality_sandbox_compare(
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.echo(json.dumps(_comparison_cli_summary(payload), sort_keys=True))
+
+
+@app.command("strategy-eval-offline")
+def strategy_eval_offline(
+    historical_file: Annotated[
+        Path,
+        typer.Option(
+            "--historical-file",
+            help="Local JSONL historical dataset to evaluate.",
+        ),
+    ],
+    output_dir: Annotated[
+        Path,
+        typer.Option(help="Local strategy evaluation report output directory."),
+    ] = Path("data/reports/strategy_eval"),
+    market_id: Annotated[
+        str | None,
+        typer.Option("--market-id", help="Optional market id when the dataset has multiple markets."),
+    ] = None,
+    random_seed: Annotated[
+        int,
+        typer.Option("--random-seed", help="Fixed seed for the random/naive baseline."),
+    ] = 20260605,
+) -> None:
+    try:
+        result = run_strategy_offline_evaluation(
+            historical_file=historical_file,
+            output_dir=output_dir,
+            market_id=_optional_cli_text(market_id),
+            random_seed=random_seed,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    dataset = result.report["dataset"]
+    typer.echo(
+        json.dumps(
+            {
+                "report_id": result.report["report_id"],
+                "json_path": str(result.json_path),
+                "markdown_path": str(result.markdown_path),
+                "json_checksum": result.json_checksum,
+                "markdown_checksum": result.markdown_checksum,
+                "dataset_classification": dataset["classification"],
+                "dataset_classification_detail": dataset["classification_detail"],
+                "acceptance_evaluation_eligible": dataset[
+                    "acceptance_evaluation_eligible"
+                ],
+                "superiority_claim_allowed": dataset["superiority_claim_allowed"],
+                "baselines": sorted(result.report["baselines"]),
+            },
+            sort_keys=True,
+        )
+    )
 
 
 def _comparison_cli_summary(payload: dict[str, object]) -> dict[str, object]:

@@ -7,6 +7,10 @@ from local_market_agent.eval.forecast_assessment import (
     ForecastAssessmentEvaluator,
     assign_calibration_bucket,
 )
+from local_market_agent.eval.offline_strategy import (
+    StrategyOfflineEvaluationResult,
+    run_strategy_offline_evaluation,
+)
 
 _RESEARCH_QUALITY_EXPORTS = {
     "DEFAULT_QWEN_BASE_URL",
@@ -22,10 +26,12 @@ __all__ = [
     "DEFAULT_QWEN_MODEL",
     "ForecastAssessmentEvaluator",
     "ResearchQualityProviderSpec",
+    "StrategyOfflineEvaluationResult",
     "assign_calibration_bucket",
     "qwen_provider_spec",
     "run_daily_provider_comparison",
     "run_sandbox_provider_comparison",
+    "run_strategy_offline_evaluation",
 ]
 
 
