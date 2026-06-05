@@ -23,5 +23,6 @@ data/research_briefs/*
 !data/research_briefs/.gitkeep
 data/reports/*
 !data/reports/.gitkeep
+data/source_exports/kalshi/*
 logs/
 *.log
