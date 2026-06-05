@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json as json_module
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -115,6 +116,94 @@ def test_phase7_runner_uses_configured_provider_without_real_network(monkeypatch
     assert manifest.execution_mode == ExecutionMode.PAPER
     assert repo.list_paper_orders()[0].execution_mode == ExecutionMode.PAPER
     assert repo.list_risk_gate_decisions()[0].execution_mode == ExecutionMode.PAPER
+
+
+def test_phase7_runner_openai_compatible_qwen_style_response_completes(
+    monkeypatch,
+    tmp_path,
+):
+    calls: list[dict[str, object]] = []
+
+    class FakeResponse:
+        def __init__(self, content: str) -> None:
+            self.content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": self.content,
+                            "reasoning": "qwen reasoning field ignored by parser",
+                            "role": "assistant",
+                        }
+                    }
+                ]
+            }
+
+    def fake_post(url, *, headers, json, timeout):
+        calls.append({"url": url, "headers": headers, "json": json, "timeout": timeout})
+        prompt = json_module.loads(json["messages"][1]["content"])
+        snapshot = prompt["input"]["snapshot"]
+        evidence = prompt["input"]["evidence"]
+        brief = {
+            "market_id": snapshot["market"]["market_id"],
+            "snapshot_id": snapshot["snapshot_id"],
+            "thesis": "Qwen-style OpenAI-compatible response clears paper-only checks.",
+            "rationale": "The fake real-provider response has enough edge for a paper YES.",
+            "evidence": evidence,
+            "counter_evidence": [],
+            "uncertainty_notes": ["Adapter regression test; no live trading."],
+            "confidence": 0.8,
+            "evidence_quality": 0.8,
+            "estimated_probability": 0.72,
+            "market_implied_probability": snapshot["market_implied_probability"],
+            "recommended_action": "paper_buy_yes",
+            "must_not_trade_reasons": ["Paper-only validation path."],
+        }
+        content = f"<think>hidden reasoning</think>\n```json\n{json_module.dumps(brief)}\n```"
+        return FakeResponse(content)
+
+    monkeypatch.setattr("local_market_agent.llm.providers.httpx.post", fake_post)
+    settings = Settings(
+        db_path=tmp_path / "phase7-qwen-style.sqlite",
+        research_brief_dir=tmp_path / "briefs",
+        llm_provider="openai-compatible",
+        openai_compatible_base_url="http://localhost:11434/v1",
+        openai_compatible_model="qwen3:14b",
+        openai_compatible_timeout_seconds=456.0,
+        risk_gates=RiskGateConfig(require_manual_approval=False),
+    )
+    repo = SQLiteRepository(settings.db_path)
+    runner = Phase7DailyRunner(
+        repository=repo,
+        settings=settings,
+        report_dir=tmp_path / "reports",
+    )
+
+    record = runner.run(now=NOW)
+
+    assert record.status == Phase7RunStatus.COMPLETED
+    assert record.brief_id is not None
+    assert record.signal_id is not None
+    assert record.risk_decision_id is not None
+    assert record.report_path is not None
+    assert Path(record.report_path).exists()
+    assert repo.load_brief(record.brief_id) is not None
+    assert repo.load_signal(record.signal_id) is not None
+    assert repo.load_risk_decision(record.risk_decision_id) is not None
+    assert len(calls) == 1
+    assert calls[0]["url"] == "http://localhost:11434/v1/chat/completions"
+    assert calls[0]["headers"] == {"Content-Type": "application/json"}
+    assert calls[0]["timeout"] == 456.0
+    prompt = json_module.loads(calls[0]["json"]["messages"][1]["content"])
+    assert prompt["json_schema"]["title"] == "ResearchBrief"
+    assert calls[0]["json"]["stream"] is False
+    assert record.metadata["llm_provider"]["provider"] == "openai-compatible"
+    assert record.metadata["llm_provider"]["is_mock"] is False
 
 
 def test_phase7_runner_selects_non_fixture_market_source_without_network(monkeypatch, tmp_path):

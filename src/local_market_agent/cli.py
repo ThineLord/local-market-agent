@@ -66,6 +66,7 @@ def _settings(
         openai_compatible_base_url=llm_base_url or settings.openai_compatible_base_url,
         openai_compatible_model=llm_model or settings.openai_compatible_model,
         openai_compatible_api_key=settings.openai_compatible_api_key,
+        openai_compatible_timeout_seconds=settings.openai_compatible_timeout_seconds,
         sec_user_agent=settings.sec_user_agent,
         run_network_tests=settings.run_network_tests,
         risk=settings.risk,

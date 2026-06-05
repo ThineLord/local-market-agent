@@ -29,6 +29,7 @@ class Researcher:
             {
                 "snapshot": snapshot.model_dump(mode="json"),
                 "evidence": [item.model_dump(mode="json") for item in evidence],
+                "research_guidance": _research_guidance(snapshot, evidence),
             },
             sort_keys=True,
         )
@@ -140,3 +141,58 @@ class ResearchBriefGenerator:
         if self.reporter is not None:
             self.reporter.write_markdown(brief)
         return brief
+
+
+def _research_guidance(
+    snapshot: MarketSnapshot,
+    evidence: list[EvidenceItem],
+) -> dict[str, object]:
+    estimate = _weighted_probability_hint(evidence, snapshot.market_implied_probability)
+    market_probability = snapshot.market_implied_probability
+    spread = snapshot.spread
+    threshold = max(0.08, 2 * spread) if spread is not None else 0.08
+    suggested_action = "observe"
+    if estimate is not None and market_probability is not None:
+        yes_edge = round(estimate - market_probability, 4)
+        no_edge = round(market_probability - estimate, 4)
+        if yes_edge >= threshold:
+            suggested_action = "paper_buy_yes"
+        elif no_edge >= threshold:
+            suggested_action = "paper_buy_no"
+    return {
+        "paper_only": True,
+        "can_create_orders": False,
+        "use_probability_hints_when_available": True,
+        "estimated_probability_from_evidence_hints": estimate,
+        "market_implied_probability": market_probability,
+        "bid_ask_spread": spread,
+        "action_edge_threshold": round(threshold, 4),
+        "suggested_research_action_from_hints": suggested_action,
+        "instructions": [
+            "This is research only; do not create or imply live orders.",
+            "If evidence metadata includes probability_hint values, use the weighted "
+            "hint estimate as estimated_probability unless you identify a clear "
+            "evidence-based reason to choose a different probability.",
+            "Use paper_buy_yes only for a positive YES edge, paper_buy_no only for "
+            "a positive NO edge, otherwise observe or skip.",
+        ],
+    }
+
+
+def _weighted_probability_hint(
+    evidence: list[EvidenceItem],
+    market_probability: float | None,
+) -> float | None:
+    hints: list[tuple[float, float]] = []
+    for item in evidence:
+        if "probability_hint" not in item.metadata:
+            continue
+        weight = item.relevance_score * item.credibility_score
+        hints.append((float(item.metadata["probability_hint"]), weight))
+    if not hints:
+        return market_probability
+    total_weight = sum(weight for _probability, weight in hints)
+    if total_weight <= 0:
+        return market_probability
+    probability = sum(probability * weight for probability, weight in hints) / total_weight
+    return round(min(0.99, max(0.01, probability)), 4)

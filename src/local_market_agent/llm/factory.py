@@ -54,6 +54,7 @@ def build_llm_provider(settings: Settings) -> BaseLLMProvider:
             base_url=settings.openai_compatible_base_url,
             api_key=settings.openai_compatible_api_key,
             model=settings.openai_compatible_model,
+            timeout_seconds=settings.openai_compatible_timeout_seconds,
         )
     return MockLLMProvider()
 

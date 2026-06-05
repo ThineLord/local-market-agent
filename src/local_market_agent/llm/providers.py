@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -30,18 +31,20 @@ def structured_completion(
     """Validate provider output as a Pydantic schema with bounded runtime retries."""
 
     errors: list[str] = []
-    current_prompt = prompt
+    validation_error: str | None = None
     for _attempt in range(max_retries + 1):
+        current_prompt = _structured_prompt(
+            task_payload=prompt,
+            schema=schema,
+            validation_error=validation_error,
+        )
         raw = provider.complete_json(current_prompt)
         try:
-            payload = json.loads(raw)
+            payload = _parse_json_payload(raw)
             return schema.model_validate(payload)
         except (json.JSONDecodeError, ValidationError) as exc:
-            errors.append(str(exc))
-            current_prompt = (
-                f"{prompt}\n\nPrevious output was invalid. Return strict JSON only. "
-                f"Validation error: {exc}"
-            )
+            validation_error = str(exc)
+            errors.append(validation_error)
     raise StructuredOutputError("; ".join(errors))
 
 
@@ -49,7 +52,7 @@ class MockLLMProvider:
     """Deterministic offline provider for tests and local demos."""
 
     def complete_json(self, prompt: str) -> str:
-        payload = json.loads(prompt)
+        payload = _task_payload_from_prompt(prompt)
         snapshot = payload["snapshot"]
         market = snapshot["market"]
         all_evidence = payload.get("evidence", [])
@@ -123,7 +126,7 @@ class OpenAICompatibleProvider:
     base_url: str
     api_key: str | None
     model: str
-    timeout_seconds: float = 30.0
+    timeout_seconds: float = 600.0
 
     def complete_json(self, prompt: str) -> str:
         headers = {"Content-Type": "application/json"}
@@ -145,12 +148,116 @@ class OpenAICompatibleProvider:
                 ],
                 "temperature": 0,
                 "response_format": {"type": "json_object"},
+                "stream": False,
             },
             timeout=self.timeout_seconds,
         )
         response.raise_for_status()
         data = response.json()
-        return data["choices"][0]["message"]["content"]
+        message = data["choices"][0]["message"]
+        return _message_content_as_text(message.get("content"))
+
+
+def _structured_prompt(
+    *,
+    task_payload: str,
+    schema: type[BaseModel],
+    validation_error: str | None,
+) -> str:
+    try:
+        parsed_input: Any = json.loads(task_payload)
+    except json.JSONDecodeError:
+        parsed_input = task_payload
+    payload: dict[str, Any] = {
+        "instructions": [
+            "Return exactly one JSON object in the message content.",
+            "The object must validate against json_schema.",
+            "Use only the data in input.",
+            "Do not include markdown, XML tags, reasoning, or prose outside JSON.",
+            "For evidence arrays, copy full evidence objects from input evidence.",
+            "Recommended action must be one of: observe, paper_buy_yes, paper_buy_no, "
+            "paper_buy, paper_sell, skip.",
+        ],
+        "json_schema": schema.model_json_schema(),
+        "input": parsed_input,
+    }
+    if validation_error is not None:
+        payload["previous_validation_error"] = validation_error
+    return json.dumps(payload, sort_keys=True)
+
+
+def _task_payload_from_prompt(prompt: str) -> dict[str, Any]:
+    payload = json.loads(prompt)
+    if (
+        isinstance(payload, dict)
+        and isinstance(payload.get("json_schema"), dict)
+        and isinstance(payload.get("input"), dict)
+    ):
+        return payload["input"]
+    return payload
+
+
+def _parse_json_payload(raw: str) -> Any:
+    candidates = _json_candidates(raw)
+    last_error: json.JSONDecodeError | None = None
+    for candidate in candidates:
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    return json.loads(raw)
+
+
+def _json_candidates(raw: str) -> list[str]:
+    text = str(raw).strip()
+    without_think = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    candidates = [text, without_think.strip()]
+
+    fenced = re.search(
+        r"```(?:json)?\s*(.*?)\s*```",
+        without_think,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    if fenced:
+        candidates.append(fenced.group(1).strip())
+
+    extracted = _extract_json_object(without_think)
+    if extracted is not None:
+        candidates.append(extracted)
+
+    unique: list[str] = []
+    for candidate in candidates:
+        if candidate and candidate not in unique:
+            unique.append(candidate)
+    return unique
+
+
+def _extract_json_object(text: str) -> str | None:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    return text[start : end + 1].strip()
+
+
+def _message_content_as_text(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text") or item.get("content")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+    if content is None:
+        return ""
+    return str(content)
 
 
 def _evidence_quality(evidence: list[dict[str, object]]) -> float:

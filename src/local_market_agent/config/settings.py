@@ -20,6 +20,13 @@ def _env_str_or_none(name: str) -> str | None:
     return stripped or None
 
 
+def _env_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    return float(value)
+
+
 @dataclass(frozen=True)
 class RiskGateConfig:
     max_market_data_age_seconds: int = 300
@@ -99,6 +106,7 @@ class Settings:
     openai_compatible_base_url: str = "http://localhost:1234/v1"
     openai_compatible_model: str = "local-model"
     openai_compatible_api_key: str | None = None
+    openai_compatible_timeout_seconds: float = 600.0
     sec_user_agent: str = "local-market-agent@example.com"
     run_network_tests: bool = False
     risk: RiskConfig = field(default_factory=RiskConfig)
@@ -133,6 +141,10 @@ def load_settings() -> Settings:
         ),
         openai_compatible_model=os.getenv("LMA_OPENAI_COMPATIBLE_MODEL", "local-model"),
         openai_compatible_api_key=os.getenv("LMA_OPENAI_COMPATIBLE_API_KEY"),
+        openai_compatible_timeout_seconds=_env_float(
+            "LMA_OPENAI_COMPATIBLE_TIMEOUT_SECONDS",
+            600.0,
+        ),
         sec_user_agent=os.getenv("LMA_SEC_USER_AGENT", "local-market-agent@example.com"),
         run_network_tests=_env_bool("LMA_RUN_NETWORK_TESTS", False),
         risk=risk,
