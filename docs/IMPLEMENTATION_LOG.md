@@ -218,3 +218,13 @@
 - Safety audit result: PR-H1 remained paper-only and local; replay and metrics are read-only, failed runs persist audit metadata, and no broker API, live order code, scheduler, daemon, Phase 8 integration, benchmark system, strategy redesign, dashboard redesign, leverage, shorting, withdrawal, or direct LLM-to-order path was added.
 - Unresolved issues: Sharpe ratio, benchmark comparison, real scheduler/daemon, Phase 8 broker integration, and dashboard redesign remain out of scope; skipped-run accounting is still not a first-class status beyond persisted failed/completed/pending/rejected/halted run records.
 - Next action: review PR-H1 hardening and decide whether remaining documented gaps are acceptable for declaring Phase 7 above the audit target.
+
+## Final Phase 7 Sign-off Audit
+
+- Status: completed.
+- Files changed: `docs/reports/final_phase7_signoff_audit.md`, `docs/IMPLEMENTATION_LOG.md`.
+- Validation commands run: `.venv/bin/ruff check .`, `PYTHONPATH=src .venv/bin/pytest`, `PYTHONPATH=src .venv/bin/lma phase7-run-daily --db "$tmpdir/phase7-signoff-smoke.sqlite" --report-dir "$tmpdir/reports" --no-require-manual-approval`, `PYTHONPATH=src .venv/bin/lma phase7-replay --db "$tmpdir/phase7-signoff-replay.sqlite" --run-id "$run_id"`, `PYTHONPATH=src LMA_DB_PATH="$tmpdir/ui-smoke.sqlite" .venv/bin/python -c "import runpy; runpy.run_path('ui/app.py')"`.
+- Test results: Ruff passed; pytest passed with 62 passed and 1 optional network test skipped; offline Phase 7 daily run smoke passed with `status=completed`; replay smoke passed with `ok=true`, matching report checksum, and unchanged SQLite table counts; dashboard import/startup smoke passed with expected Streamlit bare-mode warnings.
+- Safety audit result: audit-only docs change; no production code, broker API, live order code, real-money execution, scheduler, daemon, autostart, Phase 8 integration, credential/wallet/withdrawal path, strategy redesign, or direct LLM-to-order path was added.
+- Unresolved issues: skipped-run accounting, Sharpe ratio, benchmark comparison, and empirical 30-day/60-day operation proof remain accepted non-blocking gaps.
+- Next action: begin supervised paper-only Phase 7 operation validation, or archive Phase 7 as complete with accepted non-blocking gaps.
