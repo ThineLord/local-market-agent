@@ -8,7 +8,7 @@ from typing import Any
 from local_market_agent.adapters import FixtureAdapter
 from local_market_agent.agents import ResearchBriefGenerator
 from local_market_agent.config import RiskGateConfig, Settings
-from local_market_agent.llm import MockLLMProvider
+from local_market_agent.llm import build_llm_provider, llm_provider_audit
 from local_market_agent.operations.phase7_manifest import build_phase7_run_manifest
 from local_market_agent.paper import PaperLedger
 from local_market_agent.reporting import Phase7DailyReportGenerator
@@ -66,12 +66,14 @@ class Phase7DailyRunner:
             evidence_fixture=self.evidence_fixture,
             report_dir=self.report_dir,
         )
+        provider_audit = llm_provider_audit(self.settings).as_dict()
         context: dict[str, Any] = {
             "run_id": run_id,
             "dry_run": dry_run,
             "fixture_mode": True,
             "refresh_market_timestamp": self.refresh_market_timestamp,
             "live_trading_allowed": False,
+            "llm_provider": provider_audit,
         }
         report_path: Path | None = None
         try:
@@ -86,7 +88,7 @@ class Phase7DailyRunner:
             )
             brief = ResearchBriefGenerator(
                 repository=self.repository,
-                provider=MockLLMProvider(),
+                provider=build_llm_provider(self.settings),
             ).generate(snapshot, evidence)
             context["brief_id"] = brief.brief_id
             signal = PredictionMarketEdgeStrategy(self.settings.risk).generate_signal(
@@ -157,7 +159,11 @@ class Phase7DailyRunner:
                 evidence_fixture=self.evidence_fixture,
                 report_path=report_artifact.path,
                 cli_arguments=cli_arguments,
-                metadata={"status": status.value, "report_warnings": report_artifact.warnings},
+                metadata={
+                    "status": status.value,
+                    "report_warnings": report_artifact.warnings,
+                    "llm_provider": provider_audit,
+                },
             )
             record = Phase7RunRecord(
                 run_id=run_id,
@@ -186,6 +192,7 @@ class Phase7DailyRunner:
                     "live_trading_allowed": False,
                     "manifest_id": manifest.run_id,
                     "report_checksum": manifest.report_checksum,
+                    "llm_provider": provider_audit,
                 },
             )
             self.repository.save_phase7_run_manifest(manifest)
@@ -206,6 +213,7 @@ class Phase7DailyRunner:
                     "error_type": type(exc).__name__,
                     "error_message": str(exc),
                     "partial_context": context,
+                    "llm_provider": provider_audit,
                 },
             )
             record = Phase7RunRecord(
@@ -237,6 +245,7 @@ class Phase7DailyRunner:
                     "fixture_mode": True,
                     "refresh_market_timestamp": self.refresh_market_timestamp,
                     "live_trading_allowed": False,
+                    "llm_provider": provider_audit,
                 },
             )
             self.repository.save_phase7_run_manifest(manifest)

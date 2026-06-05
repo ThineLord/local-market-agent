@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from local_market_agent.config import RiskGateConfig, Settings
+from local_market_agent.llm import MockLLMProvider, OpenAICompatibleProvider
 from local_market_agent.operations import Phase7DailyRunner
 from local_market_agent.schemas.models import ExecutionMode, Phase7RunStatus, RiskGateDecisionStatus
 from local_market_agent.storage import SQLiteRepository
@@ -55,10 +56,59 @@ def test_phase7_runner_successful_approved_paper_run(tmp_path):
     assert manifest.cli_arguments["source"] == "runner"
     assert manifest.fixture_paths["market_fixture"] == "data/fixtures/demo_market.json"
     assert manifest.configuration_snapshot["allow_live_orders"] is False
+    assert manifest.configuration_snapshot["llm"]["provider"] == "mock"
+    assert record.metadata["llm_provider"]["provider"] == "mock"
+    assert record.metadata["llm_provider"]["network_calls_enabled"] is False
     assert len(repo.list_paper_orders()) == 1
     assert len(repo.list_paper_fills()) == 1
     assert len(repo.list_positions()) == 1
     assert repo.list_risk_gate_decisions(limit=1)[0].status == RiskGateDecisionStatus.APPROVED
+
+
+def test_phase7_runner_uses_configured_provider_without_real_network(monkeypatch, tmp_path):
+    calls: list[tuple[str, str]] = []
+
+    def fake_complete_json(self: OpenAICompatibleProvider, prompt: str) -> str:
+        calls.append((self.base_url, self.model))
+        return MockLLMProvider().complete_json(prompt)
+
+    monkeypatch.setattr(OpenAICompatibleProvider, "complete_json", fake_complete_json)
+    settings = Settings(
+        db_path=tmp_path / "phase7-openai-compatible.sqlite",
+        research_brief_dir=tmp_path / "briefs",
+        llm_provider="openai-compatible",
+        openai_compatible_base_url="http://127.0.0.1:9999/v1",
+        openai_compatible_model="phase7-test-model",
+        risk_gates=RiskGateConfig(require_manual_approval=False),
+    )
+    repo = SQLiteRepository(settings.db_path)
+    runner = Phase7DailyRunner(
+        repository=repo,
+        settings=settings,
+        report_dir=tmp_path / "reports",
+    )
+
+    record = runner.run(now=NOW)
+
+    assert record.status == Phase7RunStatus.COMPLETED
+    assert calls == [("http://127.0.0.1:9999/v1", "phase7-test-model")]
+    assert record.metadata["llm_provider"] == {
+        "api_key_configured": False,
+        "base_url": "http://127.0.0.1:9999/v1",
+        "can_create_orders": False,
+        "is_mock": False,
+        "is_real": True,
+        "model": "phase7-test-model",
+        "network_calls_enabled": True,
+        "provider": "openai-compatible",
+        "research_only": True,
+    }
+    manifest = repo.load_phase7_run_manifest(record.run_id)
+    assert manifest is not None
+    assert manifest.configuration_snapshot["llm"] == record.metadata["llm_provider"]
+    assert manifest.execution_mode == ExecutionMode.PAPER
+    assert repo.list_paper_orders()[0].execution_mode == ExecutionMode.PAPER
+    assert repo.list_risk_gate_decisions()[0].execution_mode == ExecutionMode.PAPER
 
 
 def test_phase7_runner_rejected_risk_gate_does_not_create_order(tmp_path):

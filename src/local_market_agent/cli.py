@@ -10,7 +10,10 @@ import typer
 from local_market_agent.adapters import FixtureAdapter
 from local_market_agent.agents import Reporter, ResearchBriefGenerator
 from local_market_agent.config import Settings, load_settings
-from local_market_agent.llm import MockLLMProvider, OpenAICompatibleProvider
+from local_market_agent.llm import (
+    build_llm_provider,
+    llm_provider_audit,
+)
 from local_market_agent.operations import (
     Phase7DailyRunner,
     Phase7ReplayService,
@@ -26,20 +29,26 @@ from local_market_agent.strategy import PredictionMarketEdgeStrategy
 app = typer.Typer(help="Local Market Agent: offline-first research and paper trading.")
 
 
-def _settings(db: Path | None) -> Settings:
+def _settings(
+    db: Path | None,
+    *,
+    llm_provider: str | None = None,
+    llm_model: str | None = None,
+    llm_base_url: str | None = None,
+) -> Settings:
     settings = load_settings()
-    if db is None:
+    if db is None and llm_provider is None and llm_model is None and llm_base_url is None:
         return settings
     return Settings(
-        db_path=db,
+        db_path=db or settings.db_path,
         raw_cache_dir=settings.raw_cache_dir,
         research_brief_dir=settings.research_brief_dir,
         real_money_enabled=settings.real_money_enabled,
         allow_live_orders=settings.allow_live_orders,
         human_approval_required=settings.human_approval_required,
-        llm_provider=settings.llm_provider,
-        openai_compatible_base_url=settings.openai_compatible_base_url,
-        openai_compatible_model=settings.openai_compatible_model,
+        llm_provider=llm_provider or settings.llm_provider,
+        openai_compatible_base_url=llm_base_url or settings.openai_compatible_base_url,
+        openai_compatible_model=llm_model or settings.openai_compatible_model,
         openai_compatible_api_key=settings.openai_compatible_api_key,
         sec_user_agent=settings.sec_user_agent,
         run_network_tests=settings.run_network_tests,
@@ -50,16 +59,6 @@ def _settings(db: Path | None) -> Settings:
 
 def _repository(settings: Settings) -> SQLiteRepository:
     return SQLiteRepository(settings.db_path)
-
-
-def _provider(settings: Settings):
-    if settings.llm_provider == "openai-compatible":
-        return OpenAICompatibleProvider(
-            base_url=settings.openai_compatible_base_url,
-            api_key=settings.openai_compatible_api_key,
-            model=settings.openai_compatible_model,
-        )
-    return MockLLMProvider()
 
 
 def _latest_snapshot(repo: SQLiteRepository, market_id: str | None = None) -> MarketSnapshot:
@@ -130,7 +129,7 @@ def generate_brief(
     evidence_items = adapter.fetch_evidence(snapshot.market.market_id)
     generator = ResearchBriefGenerator(
         repository=repo,
-        provider=_provider(settings),
+        provider=build_llm_provider(settings),
         reporter=Reporter(settings.research_brief_dir),
     )
     brief = generator.generate(snapshot, evidence_items)
@@ -248,6 +247,31 @@ def report_daily(
     )
 
 
+@app.command("llm-provider-audit")
+def llm_provider_audit_command(
+    llm_provider: Annotated[
+        str | None,
+        typer.Option("--llm-provider", help="LLM provider: mock or openai-compatible."),
+    ] = None,
+    llm_model: Annotated[
+        str | None,
+        typer.Option("--llm-model", help="OpenAI-compatible research model name."),
+    ] = None,
+    llm_base_url: Annotated[
+        str | None,
+        typer.Option("--llm-base-url", help="OpenAI-compatible base URL."),
+    ] = None,
+) -> None:
+    settings = _settings(
+        None,
+        llm_provider=llm_provider,
+        llm_model=llm_model,
+        llm_base_url=llm_base_url,
+    )
+    audit = llm_provider_audit(settings).as_dict()
+    typer.echo(json.dumps(audit, sort_keys=True))
+
+
 @app.command("phase7-run-daily")
 def phase7_run_daily(
     fixture: Annotated[Path, typer.Option(help="Market fixture path.")] = Path(
@@ -278,8 +302,25 @@ def phase7_run_daily(
             help="Refresh fixture market data timestamp to the run time before risk gates.",
         ),
     ] = True,
+    llm_provider: Annotated[
+        str | None,
+        typer.Option("--llm-provider", help="LLM provider: mock or openai-compatible."),
+    ] = None,
+    llm_model: Annotated[
+        str | None,
+        typer.Option("--llm-model", help="OpenAI-compatible research model name."),
+    ] = None,
+    llm_base_url: Annotated[
+        str | None,
+        typer.Option("--llm-base-url", help="OpenAI-compatible base URL."),
+    ] = None,
 ) -> None:
-    settings = _settings(db)
+    settings = _settings(
+        db,
+        llm_provider=llm_provider,
+        llm_model=llm_model,
+        llm_base_url=llm_base_url,
+    )
     repo = _repository(settings)
     record = Phase7DailyRunner(
         repository=repo,
@@ -301,6 +342,9 @@ def phase7_run_daily(
             "dry_run": dry_run,
             "require_manual_approval": require_manual_approval,
             "refresh_market_timestamp": refresh_market_timestamp,
+            "llm_provider": settings.llm_provider,
+            "llm_model": settings.openai_compatible_model,
+            "llm_base_url": settings.openai_compatible_base_url,
         },
     )
     typer.echo(
@@ -315,6 +359,7 @@ def phase7_run_daily(
                 "report_path": record.report_path,
                 "manifest_id": record.manifest_id,
                 "report_checksum": record.metadata.get("report_checksum"),
+                "llm_provider": record.metadata.get("llm_provider"),
                 "db_path": str(settings.db_path),
             },
             sort_keys=True,
@@ -389,8 +434,25 @@ def phase7_sandbox_run(
         str | None,
         typer.Option(help="Optional deterministic sandbox id/seed."),
     ] = None,
+    llm_provider: Annotated[
+        str | None,
+        typer.Option("--llm-provider", help="LLM provider: mock or openai-compatible."),
+    ] = None,
+    llm_model: Annotated[
+        str | None,
+        typer.Option("--llm-model", help="OpenAI-compatible research model name."),
+    ] = None,
+    llm_base_url: Annotated[
+        str | None,
+        typer.Option("--llm-base-url", help="OpenAI-compatible base URL."),
+    ] = None,
 ) -> None:
-    settings = _settings(db)
+    settings = _settings(
+        db,
+        llm_provider=llm_provider,
+        llm_model=llm_model,
+        llm_base_url=llm_base_url,
+    )
     repo = _repository(settings)
     try:
         parsed_start_date = _parse_cli_date(start_date, "--start-date")

@@ -9,6 +9,7 @@ from typing import Any
 
 from local_market_agent.adapters import FixtureAdapter
 from local_market_agent.config import Settings
+from local_market_agent.llm import llm_provider_audit
 from local_market_agent.operations.phase7_daily import Phase7DailyRunner
 from local_market_agent.operations.phase7_replay import Phase7ReplayService
 from local_market_agent.schemas import Phase7RunRecord, Phase7RunStatus
@@ -75,6 +76,7 @@ class Phase7SandboxRunner:
             dry_run=dry_run,
             require_manual_approval=require_manual_approval,
             refresh_market_timestamp=self.refresh_market_timestamp,
+            settings=self.settings,
         )
         records: list[Phase7RunRecord] = []
         daily_runner = Phase7DailyRunner(
@@ -106,6 +108,9 @@ class Phase7SandboxRunner:
                         "dry_run": dry_run,
                         "require_manual_approval": require_manual_approval,
                         "refresh_market_timestamp": self.refresh_market_timestamp,
+                        "llm_provider": self.settings.llm_provider,
+                        "llm_model": self.settings.openai_compatible_model,
+                        "llm_base_url": self.settings.openai_compatible_base_url,
                     },
                 )
             records.append(record)
@@ -205,6 +210,7 @@ def _sandbox_id(
     dry_run: bool,
     require_manual_approval: bool | None,
     refresh_market_timestamp: bool,
+    settings: Settings,
 ) -> str:
     payload = {
         "start_date": date_range.start_date.isoformat(),
@@ -214,6 +220,9 @@ def _sandbox_id(
         "dry_run": dry_run,
         "require_manual_approval": require_manual_approval,
         "refresh_market_timestamp": refresh_market_timestamp,
+        "llm_provider": settings.llm_provider,
+        "llm_model": settings.openai_compatible_model,
+        "llm_base_url": settings.openai_compatible_base_url,
     }
     digest = sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
     return f"phase7b_{digest}"
@@ -283,6 +292,7 @@ def _build_summary(
         "execution_mode": "paper",
         "local_only": True,
         "deterministic": True,
+        "llm_provider": llm_provider_audit(settings).as_dict(),
         "live_trading_allowed": False,
         "start_date": date_range.start_date.isoformat(),
         "end_date": date_range.end_date.isoformat(),

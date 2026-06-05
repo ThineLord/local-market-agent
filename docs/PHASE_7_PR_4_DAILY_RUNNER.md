@@ -15,6 +15,7 @@ Included:
 - Dry-run mode
 - Deterministic fixture mode
 - Phase 7 daily report generation through PR-3
+- Configured research LLM provider path, with `mock` as the default
 
 Out of scope:
 
@@ -53,6 +54,26 @@ Run without mutating paper positions:
 lma phase7-run-daily --dry-run
 ```
 
+Inspect the selected research provider without calling it:
+
+```bash
+lma llm-provider-audit
+```
+
+Use an explicitly configured OpenAI-compatible provider for research only:
+
+```bash
+export LMA_OPENAI_COMPATIBLE_API_KEY=optional-local-key
+
+lma phase7-run-daily \
+  --llm-provider openai-compatible \
+  --llm-model local-model \
+  --llm-base-url http://localhost:1234/v1
+```
+
+The provider can only draft the research brief. Signal generation, risk
+decisions, risk gates, and paper ledger writes remain deterministic code paths.
+
 Keep the fixture timestamp unchanged to exercise market-data freshness gates:
 
 ```bash
@@ -69,6 +90,8 @@ By default, the command uses:
 
 ```text
 Fixture market data
+    |
+Configured research LLM provider (mock by default)
     |
 Research brief generation
     |
@@ -108,6 +131,10 @@ decision, optional paper order, portfolio snapshot, report path, and run reasons
 - The runner does not schedule itself or run in the background.
 - Dry-run mode does not create paper orders, fills, or positions.
 - Paper ledger mutation happens only after an approved Phase 7 risk gate decision.
+- The default LLM provider remains `mock`; OpenAI-compatible research calls occur
+  only when explicitly selected by config or CLI override.
+- LLM provider output cannot create orders and cannot bypass strategy, risk, risk
+  gate, or repository relationship checks.
 - No broker adapter, credential, private trading endpoint, withdrawal path,
   leverage path, dashboard action, live order path, or direct LLM-to-order path
   is introduced.

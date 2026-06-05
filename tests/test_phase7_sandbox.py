@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 
 from local_market_agent.cli import app
 from local_market_agent.config import RiskGateConfig, Settings
+from local_market_agent.llm import MockLLMProvider, OpenAICompatibleProvider
 from local_market_agent.operations import Phase7ReplayService, Phase7SandboxRunner
 from local_market_agent.storage import SQLiteRepository
 
@@ -112,6 +113,45 @@ def test_phase7_sandbox_repeated_run_is_deterministic_on_same_input(tmp_path):
     second = _run_repeatable_sandbox(tmp_path)
 
     assert second == first
+
+
+def test_phase7_sandbox_inherits_configured_provider_without_real_network(monkeypatch, tmp_path):
+    calls: list[tuple[str, str]] = []
+
+    def fake_complete_json(self: OpenAICompatibleProvider, prompt: str) -> str:
+        calls.append((self.base_url, self.model))
+        return MockLLMProvider().complete_json(prompt)
+
+    monkeypatch.setattr(OpenAICompatibleProvider, "complete_json", fake_complete_json)
+    settings = Settings(
+        db_path=tmp_path / "phase7-sandbox-openai-compatible.sqlite",
+        research_brief_dir=tmp_path / "briefs",
+        llm_provider="openai-compatible",
+        openai_compatible_base_url="http://127.0.0.1:9999/v1",
+        openai_compatible_model="sandbox-test-model",
+        risk_gates=RiskGateConfig(require_manual_approval=False),
+    )
+    repo = SQLiteRepository(settings.db_path)
+    runner = Phase7SandboxRunner(
+        repository=repo,
+        settings=settings,
+        report_dir=tmp_path / "reports",
+    )
+
+    result = runner.run(days=2, require_manual_approval=False, replay_sample_size=0)
+
+    assert calls == [
+        ("http://127.0.0.1:9999/v1", "sandbox-test-model"),
+        ("http://127.0.0.1:9999/v1", "sandbox-test-model"),
+    ]
+    assert result.summary["llm_provider"]["provider"] == "openai-compatible"
+    assert result.summary["llm_provider"]["network_calls_enabled"] is True
+    assert result.summary["safety"]["direct_llm_to_order_path"] is False
+    assert result.summary["safety"]["allow_live_orders"] is False
+    assert all(
+        record.metadata["llm_provider"]["model"] == "sandbox-test-model"
+        for record in result.records
+    )
 
 
 def test_phase7_sandbox_rejects_live_execution_flags(tmp_path):

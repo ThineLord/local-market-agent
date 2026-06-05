@@ -36,6 +36,17 @@ lma phase7-sandbox-run \
   --no-require-manual-approval
 ```
 
+Run the sandbox with an explicitly configured OpenAI-compatible research
+provider. This affects research brief drafting only:
+
+```bash
+lma phase7-sandbox-run \
+  --days 7 \
+  --llm-provider openai-compatible \
+  --llm-model local-model \
+  --llm-base-url http://localhost:1234/v1
+```
+
 The command prints the sandbox summary JSON and writes the same JSON to:
 
 ```text
@@ -50,7 +61,7 @@ The sandbox is an orchestration layer around the existing Phase 7 components:
 Phase7SandboxRunner
     |
     +-- deterministic model id/time context
-    +-- Phase7DailyRunner once per simulated day
+    +-- Phase7DailyRunner once per simulated day with configured LLM provider
     +-- immutable per-run Phase 7 manifests
     +-- immutable per-run Phase 7 reports
     +-- Phase7ReplayService sample validation
@@ -70,6 +81,7 @@ daily runs continue to use regular UUID-based ids and the current UTC clock.
 The summary includes:
 
 - Sandbox id, date range, simulated day count, input paths, and safety flags.
+- Research LLM provider audit metadata.
 - Completed, rejected, failed, pending, halted, and dry-run counts.
 - One equity curve point per generated run when a portfolio snapshot exists.
 - Total return from configured paper starting cash to ending sandbox equity.
@@ -110,11 +122,15 @@ and `mutation_detected`.
   `risk.live_trading_allowed` is enabled.
 - Default settings still keep `REAL_MONEY_ENABLED=false`,
   `ALLOW_LIVE_ORDERS=false`, and `HUMAN_APPROVAL_REQUIRED=true`.
+- The sandbox inherits the Phase 7 daily runner's configured research provider,
+  but the LLM output still cannot create orders or bypass risk gates.
 
 ## Limitations
 
 - The sandbox reuses the existing deterministic fixture market and evidence
   set; it does not introduce a new historical data provider.
+- A real OpenAI-compatible provider may make research network calls only when
+  explicitly selected; default sandbox runs remain mock/offline.
 - Win rate and profit factor are `null` unless generated positions are later
   closed in the local paper ledger.
 - There is no Sharpe ratio, benchmark comparison, scheduler, daemon, broker

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from local_market_agent.config import Settings
+from local_market_agent.llm import llm_provider_audit
 from local_market_agent.schemas import Phase7RunManifest
 from local_market_agent.schemas.models import ExecutionMode
 
@@ -48,6 +49,7 @@ def _configuration_snapshot(settings: Settings) -> dict[str, Any]:
         "allow_live_orders": settings.allow_live_orders,
         "human_approval_required": settings.human_approval_required,
         "llm_provider": settings.llm_provider,
+        "llm": llm_provider_audit(settings).as_dict(),
         "run_network_tests": settings.run_network_tests,
         "risk": settings.risk.as_dict(),
         "risk_gates": settings.risk_gates.as_dict(),

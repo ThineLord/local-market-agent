@@ -32,6 +32,31 @@ lma report-daily
 
 All commands work without API keys and use deterministic fixtures.
 
+## LLM Provider
+
+The default provider is `mock`, which is deterministic, offline, and requires no
+API key:
+
+```bash
+lma llm-provider-audit
+```
+
+To use a local or OpenAI-compatible research provider, explicitly select it and
+configure the endpoint/model. API keys come from environment/config, not from a
+plain command-line option:
+
+```bash
+export LMA_LLM_PROVIDER=openai-compatible
+export LMA_OPENAI_COMPATIBLE_BASE_URL=http://localhost:1234/v1
+export LMA_OPENAI_COMPATIBLE_MODEL=local-model
+export LMA_OPENAI_COMPATIBLE_API_KEY=optional-local-key
+
+lma phase7-run-daily --llm-provider openai-compatible --llm-model local-model
+```
+
+The configured LLM provider can draft research JSON only. Signals, risk
+decisions, risk gates, and paper orders remain rule-based and paper-only.
+
 ## Dashboard
 
 ```bash

@@ -104,3 +104,46 @@ def test_cli_phase7_run_daily_fixture_smoke(tmp_path):
             "positions",
         ]
     }
+
+
+def test_cli_llm_provider_audit_reports_default_mock():
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["llm-provider-audit"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["provider"] == "mock"
+    assert payload["model"] is None
+    assert payload["network_calls_enabled"] is False
+    assert payload["is_mock"] is True
+    assert payload["is_real"] is False
+    assert payload["can_create_orders"] is False
+
+
+def test_cli_llm_provider_audit_reports_openai_compatible_without_secret():
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "llm-provider-audit",
+            "--llm-provider",
+            "openai-compatible",
+            "--llm-model",
+            "audit-model",
+            "--llm-base-url",
+            "http://127.0.0.1:9999/v1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["provider"] == "openai-compatible"
+    assert payload["model"] == "audit-model"
+    assert payload["base_url"] == "http://127.0.0.1:9999/v1"
+    assert payload["network_calls_enabled"] is True
+    assert payload["is_mock"] is False
+    assert payload["is_real"] is True
+    assert payload["api_key_configured"] is False
+    assert "api_key" not in payload
