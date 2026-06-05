@@ -12,6 +12,7 @@ from local_market_agent.agents import Reporter, ResearchBriefGenerator
 from local_market_agent.config import Settings, load_settings
 from local_market_agent.data import (
     build_historical_dataset,
+    import_kalshi_export,
     validate_historical_dataset,
     write_historical_validation_reports,
 )
@@ -431,6 +432,64 @@ def build_historical_dataset_command(
             output_dir=output_dir,
             report_dir=report_dir,
             validate=validate,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(json.dumps(result.as_summary(), sort_keys=True))
+
+
+@app.command("import-kalshi-export")
+def import_kalshi_export_command(
+    export_dir: Annotated[
+        Path,
+        typer.Option(
+            "--export-dir",
+            help="Local manually staged Kalshi export directory to convert.",
+        ),
+    ],
+    profile: Annotated[
+        str,
+        typer.Option(
+            "--profile",
+            help="Dataset profile: acceptance_candidate or calibration_only_last_price.",
+        ),
+    ],
+    output_dir: Annotated[
+        Path,
+        typer.Option(help="Local historical dataset output directory."),
+    ] = Path("data/historical"),
+    report_dir: Annotated[
+        Path,
+        typer.Option(help="Local validation report output directory."),
+    ] = Path("data/reports/historical_dataset"),
+    source_audit_dir: Annotated[
+        Path,
+        typer.Option(help="Local source audit Markdown output directory."),
+    ] = Path("docs/reports"),
+    validate: Annotated[
+        bool,
+        typer.Option(
+            "--validate/--no-validate",
+            help="Run the Phase 7G validator after importing the local export.",
+        ),
+    ] = True,
+    allow_downgrade: Annotated[
+        bool,
+        typer.Option(
+            "--allow-downgrade/--no-allow-downgrade",
+            help="Allow acceptance-blocked exports to become calibration-only output.",
+        ),
+    ] = False,
+) -> None:
+    try:
+        result = import_kalshi_export(
+            export_dir,
+            profile=profile,
+            output_dir=output_dir,
+            report_dir=report_dir,
+            source_audit_dir=source_audit_dir,
+            validate=validate,
+            allow_downgrade=allow_downgrade,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc

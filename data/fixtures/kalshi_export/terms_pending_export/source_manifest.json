@@ -1,0 +1,22 @@
+{
+  "export_id": "kalshi_fixture_terms_pending_export",
+  "dataset_id": "phase7g_kalshi_terms_pending_fixture",
+  "source_name": "kalshi_public_export_fixture",
+  "source_type": "public_research_export",
+  "source_urls": [
+    "https://example.com/kalshi-public-export-demo"
+  ],
+  "retrieved_at": "2026-05-07T12:00:00Z",
+  "exported_at": "2026-05-07T12:05:00Z",
+  "terms_review": "pending_review",
+  "terms_reviewed_by": "local_curator",
+  "terms_reviewed_at": "2026-05-07T12:10:00Z",
+  "private_or_authenticated_source": false,
+  "network_used_by_adapter": false,
+  "raw_file_sha256": {
+    "markets.jsonl": "fixture_markets_sha256",
+    "candlesticks.jsonl": "fixture_candlesticks_sha256",
+    "evidence.jsonl": "fixture_evidence_sha256"
+  },
+  "notes": "Synthetic fixture with terms review pending."
+}
