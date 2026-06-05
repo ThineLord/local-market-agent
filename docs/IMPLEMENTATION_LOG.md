@@ -358,3 +358,13 @@
 - Safety audit result: PR-V2-4 remained paper-only, local-only, and evaluation-only. It added no Phase 8, broker API, live order code, real-money execution, scheduler, daemon, autostart, production replacement of Strategy v1, new Strategy v2 policy logic, risk engine redesign, risk gate redesign, paper ledger mutation, data downloader, threshold tuning, leverage, derivatives, shorting, withdrawal, or direct LLM-to-order path.
 - Conclusion: Strategy v2 superiority claims are now explicitly blocked unless dataset, forecast-quality, paper-outcome, activity, safety, and replay gate checks pass. The five-row fixture remains smoke-only and cannot pass acceptance.
 - Next action: collect or curate a larger local historical dataset before attempting acceptance evaluation; do not start Phase 8, broker integration, live trading, scheduler, daemon, or production replacement work.
+
+## Phase 7G - Historical Dataset Acquisition Plan And Builder Spec
+
+- Status: completed.
+- Files changed: `docs/reports/phase7g_dataset_acquisition_plan.md`, `docs/reports/historical_dataset_builder_spec.md`, and `docs/IMPLEMENTATION_LOG.md`.
+- Validation commands run: `.venv/bin/ruff check .`, `.venv/bin/pytest`, `PYTHONPATH=src .venv/bin/pytest`.
+- Test results: Ruff passed. Plain `.venv/bin/pytest` failed during conftest import because `local_market_agent` was not on `PYTHONPATH`; rerunning with `PYTHONPATH=src` passed with 132 passed and 1 optional network test skipped.
+- Safety audit result: Phase 7G remained documentation/specification only. It added no downloader implementation, source adapter, broker API, live order code, real-money execution, scheduler, daemon, autostart, Phase 8 work, strategy change, threshold tuning, risk gate weakening, leverage, derivatives, shorting, withdrawal, or direct LLM-to-order path.
+- Conclusion: the recommended first dataset path is a Kalshi historical local export, downgraded to calibration-only if point-in-time bid/ask cannot be proven. The builder spec defines acceptance-candidate and calibration-only profiles, exact JSONL fields, evidence and settlement schemas, source provenance, validation errors, warning categories, output naming, and example rows.
+- Next action: PR-DATA-1 dataset schema validator only; do not implement source-specific downloaders, Phase 8, broker integration, live trading, scheduler, daemon, or production replacement work.
