@@ -1,5 +1,6 @@
 from local_market_agent.schemas.models import (
     EvidenceItem,
+    ForecastAssessment,
     Market,
     MarketSnapshot,
     PaperFill,
@@ -11,6 +12,7 @@ from local_market_agent.schemas.models import (
     Phase7RunStatus,
     PortfolioSnapshot,
     Position,
+    ProbabilitySource,
     ResearchBrief,
     RiskDecision,
     RiskGateCheck,
@@ -21,6 +23,7 @@ from local_market_agent.schemas.models import (
 
 __all__ = [
     "EvidenceItem",
+    "ForecastAssessment",
     "Market",
     "MarketSnapshot",
     "PaperFill",
@@ -32,6 +35,7 @@ __all__ = [
     "PortfolioSnapshot",
     "PerformanceReport",
     "Position",
+    "ProbabilitySource",
     "RiskGateCheck",
     "RiskGateDecision",
     "RiskGateDecisionStatus",

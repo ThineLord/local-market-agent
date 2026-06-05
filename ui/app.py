@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
-import pandas as pd
-import streamlit as st
+if TYPE_CHECKING:
+    import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -21,7 +22,20 @@ def _repo() -> SQLiteRepository:
     return SQLiteRepository(settings.db_path)
 
 
+def _pd() -> Any:
+    import pandas as pd
+
+    return pd
+
+
+def _st() -> Any:
+    import streamlit as st
+
+    return st
+
+
 def _frame(items: list[object]) -> pd.DataFrame:
+    pd = _pd()
     if not items:
         return pd.DataFrame()
     return pd.DataFrame([item.model_dump(mode="json") for item in items])
@@ -268,6 +282,8 @@ def _phase7_risk_gate_rows(repository: SQLiteRepository) -> list[dict[str, objec
 
 
 def _show_phase7_table(label: str, rows: list[dict[str, object]], empty_message: str) -> None:
+    st = _st()
+    pd = _pd()
     st.markdown(label)
     if rows:
         st.dataframe(pd.DataFrame(rows), width="stretch")
@@ -275,197 +291,204 @@ def _show_phase7_table(label: str, rows: list[dict[str, object]], empty_message:
         st.info(empty_message)
 
 
-st.set_page_config(page_title="Local Market Agent", layout="wide")
-st.title("Local Market Agent")
+def main() -> None:
+    st = _st()
+    pd = _pd()
+    st.set_page_config(page_title="Local Market Agent", layout="wide")
+    st.title("Local Market Agent")
 
-page = st.sidebar.radio(
-    "Page",
-    [
-        "Watchlist",
-        "Market Brief",
-        "Signals",
-        "Risk Decisions",
-        "Paper Ledger",
-        "Audit Chain",
-        "Performance Report",
-        "Phase 7 Operations",
-        "Settings",
-    ],
-)
+    page = st.sidebar.radio(
+        "Page",
+        [
+            "Watchlist",
+            "Market Brief",
+            "Signals",
+            "Risk Decisions",
+            "Paper Ledger",
+            "Audit Chain",
+            "Performance Report",
+            "Phase 7 Operations",
+            "Settings",
+        ],
+    )
 
-repo = _repo()
-settings = load_settings()
+    repo = _repo()
+    settings = load_settings()
 
-if page == "Watchlist":
-    st.subheader("Watchlist")
-    snapshots = repo.list_market_snapshots(limit=50)
-    if snapshots:
-        st.dataframe(
-            pd.DataFrame(
-                [
-                    {
-                        "market_id": item.market.market_id,
-                        "title": item.market.title,
-                        "platform": item.market.platform,
-                        "status": item.market.status,
-                        "market_probability": item.market_implied_probability,
-                        "spread": item.spread,
-                        "as_of": item.as_of,
-                    }
-                    for item in snapshots
-                ]
-            ),
-            width="stretch",
+    if page == "Watchlist":
+        st.subheader("Watchlist")
+        snapshots = repo.list_market_snapshots(limit=50)
+        if snapshots:
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "market_id": item.market.market_id,
+                            "title": item.market.title,
+                            "platform": item.market.platform,
+                            "status": item.market.status,
+                            "market_probability": item.market_implied_probability,
+                            "spread": item.spread,
+                            "as_of": item.as_of,
+                        }
+                        for item in snapshots
+                    ]
+                ),
+                width="stretch",
+            )
+        else:
+            fixture = FixtureAdapter().fetch_snapshot()
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "market_id": fixture.market.market_id,
+                            "title": fixture.market.title,
+                            "platform": fixture.market.platform,
+                            "status": fixture.market.status,
+                            "market_probability": fixture.market_implied_probability,
+                            "spread": fixture.spread,
+                        }
+                    ]
+                ),
+                width="stretch",
+            )
+
+    elif page == "Market Brief":
+        st.subheader("Market Brief")
+        briefs = repo.list_briefs(limit=25)
+        if briefs:
+            selected = st.selectbox("Brief", briefs, format_func=lambda item: item.brief_id)
+            st.json(selected.model_dump(mode="json"))
+            st.markdown("Evidence")
+            st.dataframe(_frame(selected.evidence), width="stretch")
+            st.markdown("Counter evidence")
+            st.dataframe(_frame(selected.counter_evidence), width="stretch")
+        else:
+            st.info("No briefs found. Run `lma generate-brief`.")
+
+    elif page == "Signals":
+        st.subheader("Signals")
+        st.dataframe(_frame(repo.list_signals(limit=50)), width="stretch")
+
+    elif page == "Risk Decisions":
+        st.subheader("Risk Decisions")
+        st.dataframe(_frame(repo.list_risk_decisions(limit=50)), width="stretch")
+
+    elif page == "Paper Ledger":
+        st.subheader("Paper Ledger")
+        st.markdown("Orders")
+        st.dataframe(_frame(repo.list_paper_orders(limit=100)), width="stretch")
+        st.markdown("Positions")
+        st.dataframe(_frame(repo.list_positions(limit=100)), width="stretch")
+
+    elif page == "Audit Chain":
+        st.subheader("Audit Chain")
+        rows = _audit_chain_rows(repo)
+        if not rows:
+            st.info("No audit chain data found. Run the offline CLI chain first.")
+        else:
+            columns = [
+                "brief_id",
+                "signal_id",
+                "risk_decision_id",
+                "paper_order_id",
+                "market_id",
+                "recommended_action",
+                "signal_action",
+                "risk_approved",
+                "veto_reasons",
+                "order_side",
+                "order_status",
+            ]
+            st.dataframe(pd.DataFrame([{key: row[key] for key in columns} for row in rows]), width="stretch")
+            selected_index = st.selectbox(
+                "Audit row",
+                range(len(rows)),
+                format_func=lambda index: _row_label(rows[index]),
+            )
+            selected = rows[selected_index]
+            for label, key in [
+                ("Brief JSON", "_brief"),
+                ("Signal JSON", "_signal"),
+                ("Risk Decision JSON", "_risk_decision"),
+                ("Paper Order JSON", "_paper_order"),
+            ]:
+                with st.expander(label):
+                    item = selected[key]
+                    if item is None:
+                        st.info("No linked object for this row.")
+                    else:
+                        st.json(item.model_dump(mode="json"))
+
+    elif page == "Performance Report":
+        st.subheader("Performance Report")
+        st.dataframe(_frame(repo.list_performance_reports(limit=25)), width="stretch")
+
+    elif page == "Phase 7 Operations":
+        st.subheader("Phase 7 Operations")
+        st.caption("Paper-only read-only operations view. No order, approval, live trading, or runner controls.")
+        model = _phase7_operations_view_model(repo)
+        summary = model["portfolio_summary"]
+        latest_run = model["latest_run"]
+
+        status_columns = st.columns(4)
+        status_columns[0].metric("Latest run", latest_run["status"] if latest_run else "no runs")
+        status_columns[1].metric("Open positions", summary["open_positions"])
+        status_columns[2].metric("Portfolio value", f"{summary['portfolio_value']:.4f}")
+        status_columns[3].metric("Exposure", f"{summary['exposure_pct'] * 100:.2f}%")
+
+        st.markdown("Latest report path")
+        latest_report_path = model["latest_report_path"]
+        if latest_report_path:
+            st.code(str(latest_report_path))
+        else:
+            st.info("No Phase 7 report path recorded.")
+
+        _show_phase7_table(
+            "Recent Phase 7 Runs",
+            model["run_rows"],
+            "No Phase 7 run records found.",
         )
-    else:
-        fixture = FixtureAdapter().fetch_snapshot()
-        st.dataframe(
-            pd.DataFrame(
-                [
-                    {
-                        "market_id": fixture.market.market_id,
-                        "title": fixture.market.title,
-                        "platform": fixture.market.platform,
-                        "status": fixture.market.status,
-                        "market_probability": fixture.market_implied_probability,
-                        "spread": fixture.spread,
-                    }
-                ]
-            ),
-            width="stretch",
+        st.markdown("Latest Portfolio Snapshot")
+        st.dataframe(pd.DataFrame([summary]), width="stretch")
+        _show_phase7_table(
+            "Open Paper Positions",
+            model["open_positions"],
+            "No open paper positions.",
+        )
+        _show_phase7_table(
+            "Recent Paper Orders",
+            model["paper_orders"],
+            "No paper orders.",
+        )
+        _show_phase7_table(
+            "Recent Paper Fills",
+            model["paper_fills"],
+            "No paper fills.",
+        )
+        _show_phase7_table(
+            "Recent Risk Gate Decisions",
+            model["risk_gate_decisions"],
+            "No risk gate decisions.",
         )
 
-elif page == "Market Brief":
-    st.subheader("Market Brief")
-    briefs = repo.list_briefs(limit=25)
-    if briefs:
-        selected = st.selectbox("Brief", briefs, format_func=lambda item: item.brief_id)
-        st.json(selected.model_dump(mode="json"))
-        st.markdown("Evidence")
-        st.dataframe(_frame(selected.evidence), width="stretch")
-        st.markdown("Counter evidence")
-        st.dataframe(_frame(selected.counter_evidence), width="stretch")
-    else:
-        st.info("No briefs found. Run `lma generate-brief`.")
-
-elif page == "Signals":
-    st.subheader("Signals")
-    st.dataframe(_frame(repo.list_signals(limit=50)), width="stretch")
-
-elif page == "Risk Decisions":
-    st.subheader("Risk Decisions")
-    st.dataframe(_frame(repo.list_risk_decisions(limit=50)), width="stretch")
-
-elif page == "Paper Ledger":
-    st.subheader("Paper Ledger")
-    st.markdown("Orders")
-    st.dataframe(_frame(repo.list_paper_orders(limit=100)), width="stretch")
-    st.markdown("Positions")
-    st.dataframe(_frame(repo.list_positions(limit=100)), width="stretch")
-
-elif page == "Audit Chain":
-    st.subheader("Audit Chain")
-    rows = _audit_chain_rows(repo)
-    if not rows:
-        st.info("No audit chain data found. Run the offline CLI chain first.")
-    else:
-        columns = [
-            "brief_id",
-            "signal_id",
-            "risk_decision_id",
-            "paper_order_id",
-            "market_id",
-            "recommended_action",
-            "signal_action",
-            "risk_approved",
-            "veto_reasons",
-            "order_side",
-            "order_status",
-        ]
-        st.dataframe(pd.DataFrame([{key: row[key] for key in columns} for row in rows]), width="stretch")
-        selected_index = st.selectbox(
-            "Audit row",
-            range(len(rows)),
-            format_func=lambda index: _row_label(rows[index]),
+    elif page == "Settings":
+        st.subheader("Settings")
+        st.json(
+            {
+                "db_path": str(settings.db_path),
+                "raw_cache_dir": str(settings.raw_cache_dir),
+                "research_brief_dir": str(settings.research_brief_dir),
+                "real_money_enabled": settings.real_money_enabled,
+                "allow_live_orders": settings.allow_live_orders,
+                "human_approval_required": settings.human_approval_required,
+                "llm_provider": settings.llm_provider,
+                "risk": settings.risk.as_dict(),
+                "risk_gates": settings.risk_gates.as_dict(),
+            }
         )
-        selected = rows[selected_index]
-        for label, key in [
-            ("Brief JSON", "_brief"),
-            ("Signal JSON", "_signal"),
-            ("Risk Decision JSON", "_risk_decision"),
-            ("Paper Order JSON", "_paper_order"),
-        ]:
-            with st.expander(label):
-                item = selected[key]
-                if item is None:
-                    st.info("No linked object for this row.")
-                else:
-                    st.json(item.model_dump(mode="json"))
 
-elif page == "Performance Report":
-    st.subheader("Performance Report")
-    st.dataframe(_frame(repo.list_performance_reports(limit=25)), width="stretch")
 
-elif page == "Phase 7 Operations":
-    st.subheader("Phase 7 Operations")
-    st.caption("Paper-only read-only operations view. No order, approval, live trading, or runner controls.")
-    model = _phase7_operations_view_model(repo)
-    summary = model["portfolio_summary"]
-    latest_run = model["latest_run"]
-
-    status_columns = st.columns(4)
-    status_columns[0].metric("Latest run", latest_run["status"] if latest_run else "no runs")
-    status_columns[1].metric("Open positions", summary["open_positions"])
-    status_columns[2].metric("Portfolio value", f"{summary['portfolio_value']:.4f}")
-    status_columns[3].metric("Exposure", f"{summary['exposure_pct'] * 100:.2f}%")
-
-    st.markdown("Latest report path")
-    latest_report_path = model["latest_report_path"]
-    if latest_report_path:
-        st.code(str(latest_report_path))
-    else:
-        st.info("No Phase 7 report path recorded.")
-
-    _show_phase7_table(
-        "Recent Phase 7 Runs",
-        model["run_rows"],
-        "No Phase 7 run records found.",
-    )
-    st.markdown("Latest Portfolio Snapshot")
-    st.dataframe(pd.DataFrame([summary]), width="stretch")
-    _show_phase7_table(
-        "Open Paper Positions",
-        model["open_positions"],
-        "No open paper positions.",
-    )
-    _show_phase7_table(
-        "Recent Paper Orders",
-        model["paper_orders"],
-        "No paper orders.",
-    )
-    _show_phase7_table(
-        "Recent Paper Fills",
-        model["paper_fills"],
-        "No paper fills.",
-    )
-    _show_phase7_table(
-        "Recent Risk Gate Decisions",
-        model["risk_gate_decisions"],
-        "No risk gate decisions.",
-    )
-
-elif page == "Settings":
-    st.subheader("Settings")
-    st.json(
-        {
-            "db_path": str(settings.db_path),
-            "raw_cache_dir": str(settings.raw_cache_dir),
-            "research_brief_dir": str(settings.research_brief_dir),
-            "real_money_enabled": settings.real_money_enabled,
-            "allow_live_orders": settings.allow_live_orders,
-            "human_approval_required": settings.human_approval_required,
-            "llm_provider": settings.llm_provider,
-            "risk": settings.risk.as_dict(),
-            "risk_gates": settings.risk_gates.as_dict(),
-        }
-    )
+if __name__ == "__main__":
+    main()

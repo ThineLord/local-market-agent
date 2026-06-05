@@ -129,6 +129,16 @@ class ExecutionMode(StrEnum):
     LIVE = "live"
 
 
+class ProbabilitySource(StrEnum):
+    MARKET_IMPLIED_ONLY = "market_implied_only"
+    FIXTURE_HINT = "fixture_hint"
+    HISTORICAL_HINT = "historical_hint"
+    MODEL_STRUCTURED = "model_structured"
+    MODEL_PLUS_RULES = "model_plus_rules"
+    HUMAN_LABELED_DATASET = "human_labeled_dataset"
+    MISSING = "missing"
+
+
 class Market(StrictBaseModel):
     market_id: str = Field(min_length=1)
     title: str = Field(min_length=1)
@@ -212,6 +222,38 @@ class ResearchBrief(StrictBaseModel):
             msg = "skip recommendations require must_not_trade_reasons"
             raise ValueError(msg)
         return self
+
+
+class ForecastAssessment(StrictBaseModel):
+    forecast_id: str = Field(default_factory=lambda: new_id("forecast"))
+    market_id: str = Field(min_length=1)
+    snapshot_id: str = Field(min_length=1)
+    as_of: datetime
+    estimated_probability_yes: float | None = Field(default=None, ge=0, le=1)
+    probability_source: ProbabilitySource
+    probability_provenance: dict[str, Any] = Field(default_factory=dict)
+    input_completeness_score: float = Field(ge=0, le=1)
+    evidence_completeness_score: float = Field(ge=0, le=1)
+    structured_output_complete: bool
+    forecast_confidence: float | None = Field(default=None, ge=0, le=1)
+    forecast_rationale: str = Field(min_length=1)
+    rejection_reasons: list[str] = Field(default_factory=list)
+    calibration_bucket: str | None = None
+    action_eligible: bool = False
+    evidence_count: int = Field(default=0, ge=0)
+    counter_evidence_count: int = Field(default=0, ge=0)
+    future_evidence_leakage: bool = False
+    stale_evidence: bool = False
+    missing_evidence: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("rejection_reasons")
+    @classmethod
+    def no_blank_rejection_reasons(cls, value: list[str]) -> list[str]:
+        if any(not item.strip() for item in value):
+            msg = "rejection reasons cannot be blank"
+            raise ValueError(msg)
+        return value
 
 
 class Signal(StrictBaseModel):
