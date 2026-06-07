@@ -24,5 +24,6 @@ data/research_briefs/*
 data/reports/*
 !data/reports/.gitkeep
 data/source_exports/kalshi/*
+docs/reports/*_source_audit.md
 logs/
 *.log

@@ -495,3 +495,15 @@
 - Safety audit result: DATA-COLLECT-2 remained a temporary local public-data helper outside `src/local_market_agent`. It added no production downloader, broker API, live order code, real-money execution, account endpoint, portfolio endpoint, order endpoint, fill endpoint, private/authenticated endpoint use, API key requirement, cookie/browser/session use, geoblock bypass, scheduler, daemon, autostart, Phase 8 work, strategy logic change, acceptance-gate change, automatic evidence approval, terms review mutation, or profitability claim.
 - Remaining blockers: the final Sprint 2 export did not meet the 10-market, 100-200-candle, or 3-category pilot target in the current public endpoint result set after stricter filtering. It is not an acceptance dataset; terms review remains pending and evidence approval remains human-only.
 - Next action: use the report's rerun command after network/market availability improves, then launch the local Evidence Review UI for human timestamp/source review.
+
+## DATA-COLLECT-3 - Sprint 2 Failure Analysis And Strategy Revision
+
+- Status: completed.
+- Files changed: `.gitignore`, `docs/reports/kalshi_sprint2_failure_analysis.md`, `docs/reports/data_collection_strategy_revision.md`, and `docs/IMPLEMENTATION_LOG.md`.
+- Validation commands run: `PYTHONPATH=src .venv/bin/ruff check .`, `PYTHONPATH=src .venv/bin/pytest`, and `git diff --check`.
+- Test results: full ruff passed; full pytest passed with 208 passed and 1 optional network test skipped; `git diff --check` passed.
+- Analysis result: Sprint 2 failed acceptance shape because strict evidence-friendly filtering avoided Sprint 1 traps but selected only 4 major-sports markets with 20 usable candles, and all 8 generated candidates still lacked reliable publication timestamps. The final blocker is multi-causal: current Kalshi market availability, broad crawl heuristics, sparse candle availability after filtering, timestamp-poor seed sources, and `terms_review=pending_review`.
+- Strategy result: do not run another broad acceptance-candidate crawl immediately. Build a larger calibration-only Kalshi dataset first, and separately design a small manually targeted acceptance-evidence pilot around pre-vetted macro/Fed/weather/major-event source families. Do not relax evidence timestamp policy.
+- Source audit cleanup: inspected the pre-existing untracked Sprint 1 source audit artifact, deleted it as generated/noisy local output, and added `docs/reports/*_source_audit.md` to `.gitignore`.
+- Safety audit result: DATA-COLLECT-3 remained analysis/planning-only. It added no collector implementation, data collection, evidence approval, terms review mutation, production code under `src/local_market_agent`, strategy logic change, acceptance-gate change, broker integration, live trading, order/account/portfolio/fill path, scheduler, daemon, autostart, Phase 8 work, or profitability claim.
+- Next action: decide between a calibration-only dataset task and a manually targeted acceptance-evidence source matrix before implementing any Sprint 3 collection changes.
