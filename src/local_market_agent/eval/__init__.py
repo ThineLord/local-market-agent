@@ -27,6 +27,12 @@ from local_market_agent.eval.category_calibration import (
     run_category_calibration_analysis,
     write_category_calibration_reports,
 )
+from local_market_agent.eval.category_taxonomy_audit import (
+    CategoryTaxonomyAuditArtifacts,
+    CategoryTaxonomyAuditResult,
+    run_category_taxonomy_audit,
+    write_category_taxonomy_audit_reports,
+)
 from local_market_agent.eval.forecast_assessment import (
     ForecastAssessmentEvaluator,
     assign_calibration_bucket,
@@ -54,6 +60,8 @@ __all__ = [
     "CategoryBalancePlanResult",
     "CategoryCalibrationArtifacts",
     "CategoryCalibrationResult",
+    "CategoryTaxonomyAuditArtifacts",
+    "CategoryTaxonomyAuditResult",
     "DEFAULT_QWEN_BASE_URL",
     "DEFAULT_QWEN_MODEL",
     "ForecastAssessmentEvaluator",
@@ -65,6 +73,7 @@ __all__ = [
     "run_calibration_bucket_qa",
     "run_category_balance_plan",
     "run_category_calibration_analysis",
+    "run_category_taxonomy_audit",
     "run_daily_provider_comparison",
     "run_sandbox_provider_comparison",
     "run_strategy_offline_evaluation",
@@ -72,6 +81,7 @@ __all__ = [
     "write_calibration_bucket_qa_reports",
     "write_category_balance_plan_reports",
     "write_category_calibration_reports",
+    "write_category_taxonomy_audit_reports",
 ]
 
 

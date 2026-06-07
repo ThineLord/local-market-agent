@@ -23,12 +23,14 @@ from local_market_agent.eval import (
     run_calibration_bucket_qa,
     run_category_balance_plan,
     run_category_calibration_analysis,
+    run_category_taxonomy_audit,
     run_daily_provider_comparison,
     run_sandbox_provider_comparison,
     write_calibration_audit_reports,
     write_calibration_bucket_qa_reports,
     write_category_balance_plan_reports,
     write_category_calibration_reports,
+    write_category_taxonomy_audit_reports,
 )
 from local_market_agent.eval.offline_strategy import run_strategy_offline_evaluation
 from local_market_agent.llm import (
@@ -634,6 +636,89 @@ def category_balance_plan_command(
                     "available_source_limitations"
                 ],
                 "collector_constraints": result.report["collector_constraints"],
+                "guardrails": result.guardrails,
+                "json_path": str(artifacts.json_path),
+                "markdown_path": str(artifacts.markdown_path),
+                "docs_markdown_path": str(artifacts.docs_markdown_path)
+                if artifacts.docs_markdown_path is not None
+                else None,
+            },
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("category-taxonomy-audit")
+def category_taxonomy_audit_command(
+    source_export_dir: Annotated[
+        Path,
+        typer.Option(
+            "--source-export-dir",
+            help="Local Kalshi source export directory to audit.",
+        ),
+    ],
+    historical_file: Annotated[
+        Path,
+        typer.Option(
+            "--historical-file",
+            help="Local Phase 7G JSONL dataset linked to the source export.",
+        ),
+    ],
+    output_dir: Annotated[
+        Path,
+        typer.Option(help="Local category taxonomy audit output directory."),
+    ] = Path("data/reports/calibration"),
+    reference_export_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--reference-export-dir",
+            help="Optional prior local source export for taxonomy comparison.",
+        ),
+    ] = Path("data/source_exports/kalshi/kalshi_calibration_preferred_20260607_public_probe"),
+    docs_report_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--docs-report-path",
+            help="Optional committed Markdown report path for the taxonomy audit.",
+        ),
+    ] = Path("docs/reports/kalshi_category_taxonomy_availability_audit.md"),
+) -> None:
+    try:
+        result = run_category_taxonomy_audit(
+            source_export_dir,
+            historical_file,
+            reference_export_dir=reference_export_dir,
+        )
+        artifacts = write_category_taxonomy_audit_reports(
+            result,
+            output_dir,
+            docs_markdown_path=docs_report_path,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(
+        json.dumps(
+            {
+                "export_id": result.export_id,
+                "selected_market_count": result.report["source_export"][
+                    "selected_market_count"
+                ],
+                "historical_row_count": result.report["source_export"][
+                    "historical_row_count"
+                ],
+                "raw_source_category_distribution": result.report["source_export"][
+                    "raw_source_category_distribution"
+                ],
+                "semantic_category_distribution": result.report["taxonomy_checks"][
+                    "semantic_category_distribution"
+                ],
+                "suspected_category_mismatch_count": result.report["taxonomy_checks"][
+                    "suspected_category_mismatch_count"
+                ],
+                "public_event_catch_all_overuse_count": result.report[
+                    "taxonomy_checks"
+                ]["public_event_catch_all_overuse_count"],
+                "availability_diagnosis": result.report["availability_diagnosis"],
                 "guardrails": result.guardrails,
                 "json_path": str(artifacts.json_path),
                 "markdown_path": str(artifacts.markdown_path),
