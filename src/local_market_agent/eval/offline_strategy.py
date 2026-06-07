@@ -18,6 +18,7 @@ from local_market_agent.eval.forecast_assessment import (
     assign_calibration_bucket,
 )
 from local_market_agent.operations.phase7_historical_dataset import (
+    CALIBRATION_ONLY_PROFILES,
     HistoricalDataset,
     HistoricalMarketRecord,
     load_historical_dataset,
@@ -92,7 +93,10 @@ def run_strategy_offline_evaluation(
 ) -> StrategyOfflineEvaluationResult:
     dataset = load_historical_dataset(historical_file)
     selected_market_id = market_id or dataset.default_market_id()
-    records = list(dataset.records_for_market(selected_market_id))
+    if market_id is None and selected_market_id is None:
+        records = list(dataset.records)
+    else:
+        records = list(dataset.records_for_market(selected_market_id))
     if not records:
         msg = "offline strategy evaluation requires at least one historical row"
         raise ValueError(msg)
@@ -139,11 +143,18 @@ def run_strategy_offline_evaluation(
         "random_seed": random_seed,
         "paper_fill_assumptions": {
             "scope": "offline_simulated_one_unit_trades",
-            "yes_entry_price": "best_ask",
-            "no_entry_price": "1 - best_bid",
+            "yes_entry_price": "best_ask"
+            if _paper_pnl_supported(records)
+            else "blocked_missing_bid_ask_or_dataset_flag",
+            "no_entry_price": "1 - best_bid"
+            if _paper_pnl_supported(records)
+            else "blocked_missing_bid_ask_or_dataset_flag",
             "fee_rate": risk_config.paper_fee_rate,
             "slippage_bps": 0.0,
             "ledger_mutation": False,
+            "paper_pnl_interpretation": _paper_pnl_interpretation(records),
+            "paper_pnl_claim_allowed": False,
+            "calibration_only_last_price_mode": _calibration_only_last_price_mode(records),
         },
         "dataset": dataset_summary,
         "baselines": baselines,
@@ -498,6 +509,10 @@ def _evaluate_row(
         "date": record.record_date.isoformat(),
         "timestamp": record.timestamp.isoformat(),
         "market_id": record.market_id,
+        "profile": record.profile,
+        "paper_pnl_allowed": record.paper_pnl_allowed,
+        "acceptance_candidate": record.acceptance_candidate,
+        "bid_ask_available": record.bid is not None and record.ask is not None,
         "forecast_probability": probability,
         "calibration_bucket": assign_calibration_bucket(probability),
         "settlement_outcome": outcome,
@@ -551,6 +566,8 @@ def _hint_threshold_action(
 ) -> tuple[SignalAction, str]:
     if probability is None:
         return SignalAction.OBSERVE, "missing_probability_hint"
+    if record.bid is None or record.ask is None:
+        return SignalAction.OBSERVE, "missing_bid_ask_paper_pnl_blocked"
     spread = round(record.ask - record.bid, 10)
     threshold = max(risk_config.min_edge, 2 * spread)
     yes_edge = probability - record.implied_probability
@@ -591,10 +608,16 @@ def _simulate_paper_trade(
             "realized_pnl": None,
             "rejection_reason": "skip_action",
         }
+    if not record.paper_pnl_allowed:
+        return _paper_trade_blocked("paper_pnl_not_allowed_by_dataset")
     if action == SignalAction.PAPER_BUY_YES:
+        if record.ask is None:
+            return _paper_trade_blocked("missing_bid_ask_paper_pnl_blocked")
         entry_price = record.ask
         winning_outcome = "yes"
     elif action == SignalAction.PAPER_BUY_NO:
+        if record.bid is None:
+            return _paper_trade_blocked("missing_bid_ask_paper_pnl_blocked")
         entry_price = 1 - record.bid
         winning_outcome = "no"
     else:
@@ -716,6 +739,10 @@ def _paper_outcome_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     )
     realized_pnl = round(sum(pnls), 8)
     return {
+        "paper_pnl_interpretation": _row_paper_pnl_interpretation(rows),
+        "paper_pnl_claim_allowed": False,
+        "paper_pnl_allowed_row_count": sum(1 for row in rows if row["paper_pnl_allowed"]),
+        "bid_ask_available_row_count": sum(1 for row in rows if row["bid_ask_available"]),
         "realized_paper_pnl": realized_pnl,
         "total_return": round(realized_pnl / total_cost, 8) if total_cost else 0.0,
         "benchmark_relative_return": None,
@@ -793,6 +820,14 @@ def _dataset_summary(
     markets = sorted({record.market_id for record in records})
     resolved_markets = sorted(market_outcomes)
     evidence_timestamp_coverage = _evidence_timestamp_coverage(records)
+    bid_ask_coverage = _rate(
+        sum(1 for record in records if record.bid is not None and record.ask is not None),
+        len(records),
+    )
+    last_price_coverage = _rate(
+        sum(1 for record in records if record.last_price is not None),
+        len(records),
+    )
     strategy_v2_metrics = baselines[BASELINE_STRATEGY_V2]["metrics"]
     strategy_v2_closed_trades = strategy_v2_metrics["activity"]["closed_trade_count"]
     strategy_v2_candidate_forecasts = strategy_v2_metrics["forecast"][
@@ -833,7 +868,15 @@ def _dataset_summary(
             >= SAMPLE_SIZE_TARGETS["evidence_timestamp_coverage_pct"],
         },
     }
-    acceptance_eligible = all(gate["passed"] for gate in gates.values())
+    paper_pnl_allowed_rows = sum(1 for record in records if record.paper_pnl_allowed)
+    acceptance_candidate_rows = sum(1 for record in records if record.acceptance_candidate)
+    calibration_only = _calibration_only_last_price_mode(records)
+    acceptance_eligible = (
+        all(gate["passed"] for gate in gates.values())
+        and not calibration_only
+        and paper_pnl_allowed_rows == evaluated_rows
+        and acceptance_candidate_rows == evaluated_rows
+    )
     classification, detail = _dataset_classification(
         dataset=dataset,
         records=records,
@@ -848,6 +891,21 @@ def _dataset_summary(
         "markets_evaluated": len(markets),
         "market_ids": markets,
         "resolved_markets": len(resolved_markets),
+        "scored_row_count": sum(
+            1
+            for record in records
+            if record.settlement_outcome is not None and record.implied_probability is not None
+        ),
+        "bid_ask_coverage_pct": bid_ask_coverage,
+        "last_price_coverage_pct": last_price_coverage,
+        "evidence_timestamp_coverage_pct": evidence_timestamp_coverage,
+        "paper_pnl_allowed_row_count": paper_pnl_allowed_rows,
+        "acceptance_candidate_row_count": acceptance_candidate_rows,
+        "profile_distribution": dict(
+            sorted(Counter(record.profile or "missing" for record in records).items())
+        ),
+        "paper_pnl_interpretation": _paper_pnl_interpretation(records),
+        "acceptance_gate_pass": False,
         "settlement_coverage": dataset.settlement_coverage,
         "market_settlement_coverage": "full"
         if len(resolved_markets) == len(markets)
@@ -872,6 +930,11 @@ def _dataset_classification(
 ) -> tuple[str, str]:
     path_text = str(dataset.path).replace("\\", "/")
     fixture_like = "/fixtures/" in path_text or dataset.path.name.startswith("phase7_historical_5d")
+    if _calibration_only_last_price_mode(records):
+        return (
+            "calibration_only_last_price_dataset",
+            "calibration-only last-price dataset; acceptance and paper PnL claims blocked",
+        )
     if fixture_like:
         if dataset.has_settlement:
             return (
@@ -902,6 +965,7 @@ def _dataset_preconditions_failed(dataset_summary: dict[str, Any]) -> bool:
     if dataset_summary["classification"] in {
         "fixture_smoke",
         "historical_local_dataset_without_settlement",
+        "calibration_only_last_price_dataset",
     }:
         return True
     if not dataset_summary["acceptance_evaluation_eligible"]:
@@ -1140,6 +1204,8 @@ def _baseline_summary(baseline: dict[str, Any]) -> dict[str, Any]:
             "structured_probability_completeness_rate"
         ],
         "scored_forecast_count": forecast["scored_forecast_count"],
+        "paper_pnl_interpretation": paper["paper_pnl_interpretation"],
+        "paper_pnl_claim_allowed": paper["paper_pnl_claim_allowed"],
         "realized_paper_pnl": paper["realized_paper_pnl"],
         "total_return": paper["total_return"],
         "benchmark_relative_return": paper["benchmark_relative_return"],
@@ -1266,6 +1332,49 @@ def _attach_benchmark_relative_returns(baselines: dict[str, dict[str, Any]]) -> 
             paper["total_return"] - benchmark_return,
             8,
         )
+
+
+def _paper_trade_blocked(reason: str) -> dict[str, Any]:
+    return {
+        "trade": False,
+        "closed": False,
+        "entry_price": None,
+        "quantity": 0.0,
+        "fee": 0.0,
+        "realized_pnl": None,
+        "rejection_reason": reason,
+    }
+
+
+def _paper_pnl_supported(records: list[HistoricalMarketRecord]) -> bool:
+    return bool(records) and all(
+        record.paper_pnl_allowed and record.bid is not None and record.ask is not None
+        for record in records
+    )
+
+
+def _calibration_only_last_price_mode(records: list[HistoricalMarketRecord]) -> bool:
+    return bool(records) and all(record.profile in CALIBRATION_ONLY_PROFILES for record in records)
+
+
+def _paper_pnl_interpretation(records: list[HistoricalMarketRecord]) -> str:
+    if not records:
+        return "blocked"
+    if not all(record.paper_pnl_allowed for record in records):
+        return "blocked"
+    if not all(record.bid is not None and record.ask is not None for record in records):
+        return "blocked"
+    return "diagnostic_only"
+
+
+def _row_paper_pnl_interpretation(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return "blocked"
+    if not all(row["paper_pnl_allowed"] for row in rows):
+        return "blocked"
+    if not all(row["bid_ask_available"] for row in rows):
+        return "blocked"
+    return "diagnostic_only"
 
 
 def _market_outcomes(records: list[HistoricalMarketRecord]) -> dict[str, str]:
@@ -1405,6 +1514,12 @@ def _markdown_report(report: dict[str, Any]) -> str:
         f"- Detail: {dataset['classification_detail']}",
         f"- Evaluated rows: {dataset['evaluated_rows']}",
         f"- Markets evaluated: {dataset['markets_evaluated']}",
+        f"- Scored rows: {dataset.get('scored_row_count')}",
+        f"- Last-price coverage: {dataset.get('last_price_coverage_pct')}",
+        f"- Bid/ask coverage: {dataset.get('bid_ask_coverage_pct')}",
+        f"- Evidence timestamp coverage: {dataset.get('evidence_timestamp_coverage_pct')}",
+        f"- Paper PnL interpretation: `{dataset.get('paper_pnl_interpretation')}`",
+        f"- Acceptance gate pass: {dataset.get('acceptance_gate_pass', False)}",
         f"- Superiority claims allowed: {dataset['superiority_claim_allowed']}",
         f"- Superiority claim status: {dataset['superiority_claim']}",
         "",
@@ -1470,10 +1585,18 @@ def _markdown_report(report: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-        "## Baseline Metrics",
-        "",
-        "| Baseline | Trades | Abstention rate | Brier | PnL | Total return |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
+            "## Paper PnL Guardrails",
+            "",
+            f"- Interpretation: `{report['paper_fill_assumptions'].get('paper_pnl_interpretation')}`",
+            f"- PnL claims allowed: {report['paper_fill_assumptions'].get('paper_pnl_claim_allowed')}",
+            f"- YES entry price: `{report['paper_fill_assumptions'].get('yes_entry_price')}`",
+            f"- NO entry price: `{report['paper_fill_assumptions'].get('no_entry_price')}`",
+            "- Realized PnL values are not profitability claims when interpretation is `blocked`.",
+            "",
+            "## Baseline Metrics",
+            "",
+            "| Baseline | Trades | Abstention rate | Brier | Paper PnL interpretation | PnL claim allowed | Realized PnL | Total return |",
+            "| --- | ---: | ---: | ---: | --- | --- | ---: | ---: |",
         ]
     )
     for baseline_name, baseline in report["baselines"].items():
@@ -1486,6 +1609,8 @@ def _markdown_report(report: dict[str, Any]) -> str:
             f"{activity['trade_count']} | "
             f"{activity['abstention_rate']} | "
             f"{forecast['brier_score']} | "
+            f"{paper['paper_pnl_interpretation']} | "
+            f"{paper['paper_pnl_claim_allowed']} | "
             f"{paper['realized_paper_pnl']} | "
             f"{paper['total_return']} |"
         )

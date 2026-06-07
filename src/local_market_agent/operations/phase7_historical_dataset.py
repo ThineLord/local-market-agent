@@ -10,14 +10,16 @@ from local_market_agent.schemas import EvidenceItem, Market, MarketSnapshot
 from local_market_agent.schemas.models import MarketStatus, MarketType
 
 SUPPORTED_SETTLEMENT_OUTCOMES = {"yes", "no"}
+PROFILE_CALIBRATION_ONLY_LAST_PRICE = "calibration_only_last_price"
+CALIBRATION_ONLY_PROFILES = {PROFILE_CALIBRATION_ONLY_LAST_PRICE}
 
 
 @dataclass(frozen=True)
 class HistoricalMarketRecord:
     timestamp: datetime
     market_id: str
-    bid: float
-    ask: float
+    bid: float | None
+    ask: float | None
     last_price: float
     implied_probability: float
     liquidity: float | None
@@ -27,6 +29,9 @@ class HistoricalMarketRecord:
     line_number: int
     title: str
     platform: str
+    profile: str | None
+    paper_pnl_allowed: bool
+    acceptance_candidate: bool
 
     @property
     def record_date(self) -> date:
@@ -214,7 +219,7 @@ def load_historical_dataset(path: str | Path | None) -> HistoricalDataset:
     warnings: list[str] = []
     if records != sorted_records:
         warnings.append("Historical records were explicitly sorted by timestamp and market id.")
-    _validate_duplicate_dates(sorted_records)
+    _validate_duplicate_market_timestamps(sorted_records)
     if not any(record.settlement_outcome is not None for record in sorted_records):
         warnings.append(
             "Historical dataset has no settlement/outcome fields; final profitability "
@@ -238,19 +243,43 @@ def _record_from_payload(
 ) -> HistoricalMarketRecord:
     timestamp = _parse_timestamp(payload, line_number=line_number)
     market_id = _required_text(payload, "market_id", line_number=line_number)
-    bid = _required_probability(payload, "bid", line_number=line_number)
-    ask = _required_probability(payload, "ask", line_number=line_number)
-    if bid > ask:
+    profile = _optional_text(payload.get("profile"))
+    calibration_only = profile in CALIBRATION_ONLY_PROFILES
+    bid = _row_probability(
+        payload,
+        "bid",
+        line_number=line_number,
+        required=not calibration_only,
+    )
+    ask = _row_probability(
+        payload,
+        "ask",
+        line_number=line_number,
+        required=not calibration_only,
+    )
+    if bid is not None and ask is not None and bid > ask:
         msg = f"historical JSONL line {line_number} has invalid spread: bid exceeds ask"
         raise ValueError(msg)
     last_price = _required_probability(payload, "last_price", line_number=line_number)
     implied = _optional_probability(payload.get("implied_probability"), "implied_probability", line_number)
     if implied is None:
-        implied = round((bid + ask) / 2, 4)
+        implied = round((bid + ask) / 2, 4) if bid is not None and ask is not None else last_price
     liquidity = _optional_nonnegative(payload.get("liquidity"), "liquidity", line_number)
     volume = _optional_nonnegative(payload.get("volume"), "volume", line_number)
     evidence = tuple(_evidence_items(payload.get("evidence"), timestamp, line_number=line_number))
     settlement = _settlement_outcome(payload, line_number=line_number)
+    paper_pnl_allowed = _optional_bool(
+        payload.get("paper_pnl_allowed"),
+        default=not calibration_only,
+        field="paper_pnl_allowed",
+        line_number=line_number,
+    )
+    acceptance_candidate = _optional_bool(
+        payload.get("acceptance_candidate"),
+        default=not calibration_only,
+        field="acceptance_candidate",
+        line_number=line_number,
+    )
     return HistoricalMarketRecord(
         timestamp=timestamp,
         market_id=market_id,
@@ -265,6 +294,9 @@ def _record_from_payload(
         line_number=line_number,
         title=str(payload.get("title") or market_id),
         platform=str(payload.get("platform") or "historical-file"),
+        profile=profile,
+        paper_pnl_allowed=paper_pnl_allowed,
+        acceptance_candidate=acceptance_candidate,
     )
 
 
@@ -296,6 +328,25 @@ def _required_text(payload: dict[str, Any], field: str, *, line_number: int) -> 
         msg = f"historical JSONL line {line_number} is missing required field: {field}"
         raise ValueError(msg)
     return str(value).strip()
+
+
+def _optional_text(value: object) -> str | None:
+    if value is None or value == "":
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _row_probability(
+    payload: dict[str, Any],
+    field: str,
+    *,
+    line_number: int,
+    required: bool,
+) -> float | None:
+    if required:
+        return _required_probability(payload, field, line_number=line_number)
+    return _optional_probability(payload.get(field), field, line_number)
 
 
 def _required_probability(payload: dict[str, Any], field: str, *, line_number: int) -> float:
@@ -337,6 +388,27 @@ def _optional_nonnegative(value: object, field: str, line_number: int) -> float 
     return parsed
 
 
+def _optional_bool(
+    value: object,
+    *,
+    default: bool,
+    field: str,
+    line_number: int,
+) -> bool:
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes"}:
+            return True
+        if normalized in {"false", "0", "no"}:
+            return False
+    msg = f"historical JSONL line {line_number} has invalid boolean field: {field}"
+    raise ValueError(msg)
+
+
 def _evidence_items(
     raw_evidence: object,
     record_timestamp: datetime,
@@ -376,6 +448,8 @@ def _evidence_items(
 
 def _settlement_outcome(payload: dict[str, Any], *, line_number: int) -> str | None:
     value = payload.get("settlement_outcome", payload.get("outcome", payload.get("settlement")))
+    if isinstance(value, dict):
+        value = value.get("outcome")
     if value is None or value == "":
         return None
     normalized = str(value).strip().lower()
@@ -388,14 +462,14 @@ def _settlement_outcome(payload: dict[str, Any], *, line_number: int) -> str | N
     return normalized
 
 
-def _validate_duplicate_dates(records: list[HistoricalMarketRecord]) -> None:
-    seen: set[tuple[date, str]] = set()
+def _validate_duplicate_market_timestamps(records: list[HistoricalMarketRecord]) -> None:
+    seen: set[tuple[datetime, str]] = set()
     for record in records:
-        key = (record.record_date, record.market_id)
+        key = (record.timestamp, record.market_id)
         if key in seen:
             msg = (
                 "historical dataset contains duplicate records for "
-                f"market_id={record.market_id} date={record.record_date.isoformat()}"
+                f"market_id={record.market_id} timestamp={record.timestamp.isoformat()}"
             )
             raise ValueError(msg)
         seen.add(key)

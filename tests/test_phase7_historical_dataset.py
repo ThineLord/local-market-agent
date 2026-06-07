@@ -51,6 +51,29 @@ def test_historical_dataset_rejects_missing_bid_or_ask(tmp_path):
         load_historical_dataset(path)
 
 
+def test_historical_dataset_allows_calibration_only_last_price_without_bid_ask(tmp_path):
+    path = tmp_path / "calibration-only.jsonl"
+    payload = _record("2026-05-01")
+    payload["profile"] = "calibration_only_last_price"
+    payload["bid"] = None
+    payload["ask"] = None
+    payload["paper_pnl_allowed"] = False
+    payload["acceptance_candidate"] = False
+    payload["implied_probability"] = payload["last_price"]
+    payload["settlement"] = {"outcome": "yes", "source": "unit-test"}
+    _write_jsonl(path, [payload])
+
+    dataset = load_historical_dataset(path)
+
+    record = dataset.records[0]
+    assert record.bid is None
+    assert record.ask is None
+    assert record.implied_probability == record.last_price
+    assert record.paper_pnl_allowed is False
+    assert record.acceptance_candidate is False
+    assert record.settlement_outcome == "yes"
+
+
 def test_historical_dataset_rejects_invalid_spread(tmp_path):
     path = tmp_path / "invalid-spread.jsonl"
     _write_jsonl(path, [_record("2026-05-01", bid=0.62, ask=0.58)])

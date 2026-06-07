@@ -260,6 +260,49 @@ def test_strategy_eval_offline_cli_writes_json_and_markdown_reports(tmp_path):
     assert Path(payload["markdown_path"]).exists()
 
 
+def test_strategy_eval_calibration_only_last_price_blocks_acceptance_and_pnl(tmp_path):
+    dataset_path = _calibration_only_last_price_dataset(tmp_path)
+
+    result = run_strategy_offline_evaluation(
+        historical_file=dataset_path,
+        output_dir=tmp_path / "reports",
+    )
+
+    assert result.json_path.exists()
+    assert result.markdown_path.exists()
+
+    dataset = result.report["dataset"]
+    gate = result.report["acceptance_gate"]
+    assert dataset["classification"] == "calibration_only_last_price_dataset"
+    assert dataset["evaluated_rows"] == 4
+    assert dataset["markets_evaluated"] == 2
+    assert dataset["bid_ask_coverage_pct"] == 0.0
+    assert dataset["last_price_coverage_pct"] == 1.0
+    assert dataset["paper_pnl_allowed_row_count"] == 0
+    assert dataset["acceptance_candidate_row_count"] == 0
+    assert dataset["paper_pnl_interpretation"] == "blocked"
+    assert dataset["acceptance_evaluation_eligible"] is False
+    assert dataset["acceptance_gate_pass"] is False
+
+    assert gate["gate_status"] == "not_applicable"
+    assert gate["superiority_claim_allowed"] is False
+    assert gate["dataset_label"] == "calibration_only_last_price_dataset"
+    assert "dataset.closed_paper_trades" in gate["failed_gates"]
+    assert "dataset.evidence_timestamp_coverage_pct" in gate["failed_gates"]
+
+    assert result.report["paper_fill_assumptions"]["paper_pnl_interpretation"] == "blocked"
+    assert result.report["paper_fill_assumptions"]["paper_pnl_claim_allowed"] is False
+    assert result.report["paper_fill_assumptions"][
+        "calibration_only_last_price_mode"
+    ] is True
+
+    for baseline in result.report["baselines"].values():
+        paper = baseline["metrics"]["paper_outcome"]
+        assert paper["paper_pnl_interpretation"] == "blocked"
+        assert paper["paper_pnl_claim_allowed"] is False
+        assert paper["realized_paper_pnl"] == 0
+
+
 def test_strategy_v2_appears_in_offline_evaluation_report(tmp_path):
     result = run_strategy_offline_evaluation(
         historical_file=HISTORICAL_FIXTURE,
@@ -313,6 +356,38 @@ def _dataset_without_settlement(tmp_path: Path) -> Path:
         payload.pop("settlement_outcome", None)
         rows.append(json.dumps(payload, sort_keys=True))
     path = tmp_path / "historical_without_settlement.jsonl"
+    path.write_text("\n".join(rows) + "\n")
+    return path
+
+
+def _calibration_only_last_price_dataset(tmp_path: Path) -> Path:
+    rows = []
+    for market_index in range(2):
+        for row_index in range(2):
+            price = round(0.35 + (0.1 * market_index) + (0.05 * row_index), 4)
+            rows.append(
+                json.dumps(
+                    {
+                        "timestamp": (
+                            f"2026-05-0{market_index + 1}T1{row_index}:00:00Z"
+                        ),
+                        "market_id": f"calibration-market-{market_index}",
+                        "profile": "calibration_only_last_price",
+                        "bid": None,
+                        "ask": None,
+                        "last_price": price,
+                        "implied_probability": price,
+                        "paper_pnl_allowed": False,
+                        "acceptance_candidate": False,
+                        "settlement_outcome": "yes"
+                        if market_index == 0
+                        else "no",
+                        "evidence": [],
+                    },
+                    sort_keys=True,
+                )
+            )
+    path = tmp_path / "calibration_only_last_price.jsonl"
     path.write_text("\n".join(rows) + "\n")
     return path
 
