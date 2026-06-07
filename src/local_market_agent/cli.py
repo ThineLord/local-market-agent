@@ -19,8 +19,10 @@ from local_market_agent.data import (
 from local_market_agent.eval import (
     DEFAULT_QWEN_BASE_URL,
     DEFAULT_QWEN_MODEL,
+    audit_calibration_dataset,
     run_daily_provider_comparison,
     run_sandbox_provider_comparison,
+    write_calibration_audit_reports,
 )
 from local_market_agent.eval.offline_strategy import run_strategy_offline_evaluation
 from local_market_agent.llm import (
@@ -380,6 +382,50 @@ def validate_historical_dataset_command(
                 "market_count": result.market_count,
                 "error_count": result.error_count,
                 "warning_count": result.warning_count,
+                "json_path": str(artifacts.json_path),
+                "markdown_path": str(artifacts.markdown_path),
+            },
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("audit-calibration-dataset")
+def audit_calibration_dataset_command(
+    historical_file: Annotated[
+        Path,
+        typer.Option(
+            "--historical-file",
+            help="Local Phase 7G JSONL dataset to audit for calibration eligibility.",
+        ),
+    ],
+    output_dir: Annotated[
+        Path,
+        typer.Option(help="Local calibration audit report output directory."),
+    ] = Path("data/reports/calibration"),
+) -> None:
+    try:
+        result = audit_calibration_dataset(historical_file)
+        artifacts = write_calibration_audit_reports(result, output_dir)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(
+        json.dumps(
+            {
+                "dataset_id": result.dataset_id,
+                "classification": result.classification,
+                "row_count": result.row_count,
+                "market_count": result.market_count,
+                "resolved_market_count": result.resolved_market_count,
+                "scored_row_count": result.scored_row_count,
+                "settlement_coverage_pct": result.settlement_coverage_pct,
+                "evidence_timestamp_coverage_pct": result.evidence_timestamp_coverage_pct,
+                "acceptance_blockers": list(result.acceptance_blockers),
+                "calibration_warnings": list(result.calibration_warnings),
+                "claim_guardrails": result.claim_guardrails,
+                "validation_valid": result.validation_summary["valid"],
+                "validation_error_count": result.validation_summary["error_count"],
+                "validation_warning_count": result.validation_summary["warning_count"],
                 "json_path": str(artifacts.json_path),
                 "markdown_path": str(artifacts.markdown_path),
             },
