@@ -27,11 +27,23 @@ from local_market_agent.eval.category_calibration import (
     run_category_calibration_analysis,
     write_category_calibration_reports,
 )
+from local_market_agent.eval.category_normalization import (
+    CategoryNormalizationArtifacts,
+    CategoryNormalizationExportResult,
+    NormalizedCategoryResult,
+    normalize_market_category,
+    run_category_normalization_export,
+    write_category_normalization_reports,
+)
 from local_market_agent.eval.category_taxonomy_audit import (
     CategoryTaxonomyAuditArtifacts,
     CategoryTaxonomyAuditResult,
     run_category_taxonomy_audit,
     write_category_taxonomy_audit_reports,
+)
+from local_market_agent.eval.collector_diagnostics import (
+    CollectorDiagnostics,
+    build_collector_diagnostics,
 )
 from local_market_agent.eval.forecast_assessment import (
     ForecastAssessmentEvaluator,
@@ -60,19 +72,26 @@ __all__ = [
     "CategoryBalancePlanResult",
     "CategoryCalibrationArtifacts",
     "CategoryCalibrationResult",
+    "CategoryNormalizationArtifacts",
+    "CategoryNormalizationExportResult",
     "CategoryTaxonomyAuditArtifacts",
     "CategoryTaxonomyAuditResult",
+    "CollectorDiagnostics",
     "DEFAULT_QWEN_BASE_URL",
     "DEFAULT_QWEN_MODEL",
     "ForecastAssessmentEvaluator",
+    "NormalizedCategoryResult",
     "ResearchQualityProviderSpec",
     "StrategyOfflineEvaluationResult",
     "audit_calibration_dataset",
     "assign_calibration_bucket",
+    "build_collector_diagnostics",
     "qwen_provider_spec",
+    "normalize_market_category",
     "run_calibration_bucket_qa",
     "run_category_balance_plan",
     "run_category_calibration_analysis",
+    "run_category_normalization_export",
     "run_category_taxonomy_audit",
     "run_daily_provider_comparison",
     "run_sandbox_provider_comparison",
@@ -81,6 +100,7 @@ __all__ = [
     "write_calibration_bucket_qa_reports",
     "write_category_balance_plan_reports",
     "write_category_calibration_reports",
+    "write_category_normalization_reports",
     "write_category_taxonomy_audit_reports",
 ]
 

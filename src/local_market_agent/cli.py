@@ -23,6 +23,7 @@ from local_market_agent.eval import (
     run_calibration_bucket_qa,
     run_category_balance_plan,
     run_category_calibration_analysis,
+    run_category_normalization_export,
     run_category_taxonomy_audit,
     run_daily_provider_comparison,
     run_sandbox_provider_comparison,
@@ -30,6 +31,7 @@ from local_market_agent.eval import (
     write_calibration_bucket_qa_reports,
     write_category_balance_plan_reports,
     write_category_calibration_reports,
+    write_category_normalization_reports,
     write_category_taxonomy_audit_reports,
 )
 from local_market_agent.eval.offline_strategy import run_strategy_offline_evaluation
@@ -719,6 +721,66 @@ def category_taxonomy_audit_command(
                     "taxonomy_checks"
                 ]["public_event_catch_all_overuse_count"],
                 "availability_diagnosis": result.report["availability_diagnosis"],
+                "guardrails": result.guardrails,
+                "json_path": str(artifacts.json_path),
+                "markdown_path": str(artifacts.markdown_path),
+                "docs_markdown_path": str(artifacts.docs_markdown_path)
+                if artifacts.docs_markdown_path is not None
+                else None,
+            },
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("normalize-category-export")
+def normalize_category_export_command(
+    source_export_dir: Annotated[
+        Path,
+        typer.Option(
+            "--source-export-dir",
+            help="Local Kalshi source export directory with markets.jsonl.",
+        ),
+    ],
+    output_dir: Annotated[
+        Path,
+        typer.Option(help="Local category normalization output directory."),
+    ] = Path("data/reports/calibration"),
+    docs_report_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--docs-report-path",
+            help="Optional committed Markdown report path for normalization output.",
+        ),
+    ] = Path("docs/reports/kalshi_category_normalization_result.md"),
+) -> None:
+    try:
+        result = run_category_normalization_export(source_export_dir)
+        artifacts = write_category_normalization_reports(
+            result,
+            output_dir,
+            docs_markdown_path=docs_report_path,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(
+        json.dumps(
+            {
+                "export_id": result.export_id,
+                "market_count": result.report["summary"]["market_count"],
+                "normalized_category_counts": result.report["summary"][
+                    "normalized_category_counts"
+                ],
+                "public_event_mismatch_count": result.report["summary"][
+                    "public_event_mismatch_count"
+                ],
+                "mention_market_count": result.report["summary"][
+                    "mention_market_count"
+                ],
+                "unknown_count": result.report["summary"]["unknown_count"],
+                "normalization_usable_for_future_retry": result.report["summary"][
+                    "normalization_usable_for_future_retry"
+                ],
                 "guardrails": result.guardrails,
                 "json_path": str(artifacts.json_path),
                 "markdown_path": str(artifacts.markdown_path),
