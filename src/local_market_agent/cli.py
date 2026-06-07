@@ -21,11 +21,13 @@ from local_market_agent.eval import (
     DEFAULT_QWEN_MODEL,
     audit_calibration_dataset,
     run_calibration_bucket_qa,
+    run_category_balance_plan,
     run_category_calibration_analysis,
     run_daily_provider_comparison,
     run_sandbox_provider_comparison,
     write_calibration_audit_reports,
     write_calibration_bucket_qa_reports,
+    write_category_balance_plan_reports,
     write_category_calibration_reports,
 )
 from local_market_agent.eval.offline_strategy import run_strategy_offline_evaluation
@@ -556,6 +558,82 @@ def category_calibration_analysis_command(
                 "public_event_explanation": result.comparison[
                     "public_event_explanation"
                 ],
+                "guardrails": result.guardrails,
+                "json_path": str(artifacts.json_path),
+                "markdown_path": str(artifacts.markdown_path),
+                "docs_markdown_path": str(artifacts.docs_markdown_path)
+                if artifacts.docs_markdown_path is not None
+                else None,
+            },
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("category-balance-plan")
+def category_balance_plan_command(
+    historical_file: Annotated[
+        Path,
+        typer.Option(
+            "--historical-file",
+            help="Local Phase 7G JSONL dataset to plan a category-balanced retry from.",
+        ),
+    ],
+    output_dir: Annotated[
+        Path,
+        typer.Option(help="Local category balance plan output directory."),
+    ] = Path("data/reports/calibration"),
+    category_report_path: Annotated[
+        Path,
+        typer.Option(
+            "--category-report-path",
+            help="Committed PR-CAL-6 category calibration Markdown report.",
+        ),
+    ] = Path("docs/reports/kalshi_category_calibration_analysis.md"),
+    source_export_root: Annotated[
+        Path,
+        typer.Option(
+            "--source-export-root",
+            help="Local root containing staged Kalshi source exports.",
+        ),
+    ] = Path("data/source_exports/kalshi"),
+    docs_report_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--docs-report-path",
+            help="Optional committed Markdown report path for the balance plan.",
+        ),
+    ] = Path("docs/reports/kalshi_category_balance_plan.md"),
+    gap_threshold: Annotated[
+        float,
+        typer.Option("--gap-threshold", help="Minimum absolute bucket gap to flag."),
+    ] = 0.15,
+) -> None:
+    try:
+        result = run_category_balance_plan(
+            historical_file,
+            category_report_path=category_report_path,
+            source_export_root=source_export_root,
+            gap_threshold=gap_threshold,
+        )
+        artifacts = write_category_balance_plan_reports(
+            result,
+            output_dir,
+            docs_markdown_path=docs_report_path,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(
+        json.dumps(
+            {
+                "dataset_id": result.dataset_id,
+                "recommended_plan_name": result.report["recommended_plan_name"],
+                "recommended_target": result.report["recommended_target"],
+                "current_distribution": result.report["current_distribution"],
+                "available_source_limitations": result.report[
+                    "available_source_limitations"
+                ],
+                "collector_constraints": result.report["collector_constraints"],
                 "guardrails": result.guardrails,
                 "json_path": str(artifacts.json_path),
                 "markdown_path": str(artifacts.markdown_path),
