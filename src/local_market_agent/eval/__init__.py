@@ -15,6 +15,12 @@ from local_market_agent.eval.calibration_bucket_qa import (
     run_calibration_bucket_qa,
     write_calibration_bucket_qa_reports,
 )
+from local_market_agent.eval.category_calibration import (
+    CategoryCalibrationArtifacts,
+    CategoryCalibrationResult,
+    run_category_calibration_analysis,
+    write_category_calibration_reports,
+)
 from local_market_agent.eval.forecast_assessment import (
     ForecastAssessmentEvaluator,
     assign_calibration_bucket,
@@ -38,6 +44,8 @@ __all__ = [
     "CalibrationAuditResult",
     "CalibrationBucketQAArtifacts",
     "CalibrationBucketQAResult",
+    "CategoryCalibrationArtifacts",
+    "CategoryCalibrationResult",
     "DEFAULT_QWEN_BASE_URL",
     "DEFAULT_QWEN_MODEL",
     "ForecastAssessmentEvaluator",
@@ -47,11 +55,13 @@ __all__ = [
     "assign_calibration_bucket",
     "qwen_provider_spec",
     "run_calibration_bucket_qa",
+    "run_category_calibration_analysis",
     "run_daily_provider_comparison",
     "run_sandbox_provider_comparison",
     "run_strategy_offline_evaluation",
     "write_calibration_audit_reports",
     "write_calibration_bucket_qa_reports",
+    "write_category_calibration_reports",
 ]
 
 
