@@ -20,9 +20,11 @@ from local_market_agent.eval import (
     DEFAULT_QWEN_BASE_URL,
     DEFAULT_QWEN_MODEL,
     audit_calibration_dataset,
+    run_calibration_bucket_qa,
     run_daily_provider_comparison,
     run_sandbox_provider_comparison,
     write_calibration_audit_reports,
+    write_calibration_bucket_qa_reports,
 )
 from local_market_agent.eval.offline_strategy import run_strategy_offline_evaluation
 from local_market_agent.llm import (
@@ -426,6 +428,56 @@ def audit_calibration_dataset_command(
                 "validation_valid": result.validation_summary["valid"],
                 "validation_error_count": result.validation_summary["error_count"],
                 "validation_warning_count": result.validation_summary["warning_count"],
+                "json_path": str(artifacts.json_path),
+                "markdown_path": str(artifacts.markdown_path),
+            },
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("calibration-bucket-qa")
+def calibration_bucket_qa_command(
+    historical_file: Annotated[
+        Path,
+        typer.Option(
+            "--historical-file",
+            help="Local Phase 7G JSONL dataset to inspect for calibration bucket gaps.",
+        ),
+    ],
+    output_dir: Annotated[
+        Path,
+        typer.Option(help="Local calibration bucket QA report output directory."),
+    ] = Path("data/reports/calibration"),
+    gap_threshold: Annotated[
+        float,
+        typer.Option("--gap-threshold", help="Minimum absolute bucket gap to flag."),
+    ] = 0.15,
+) -> None:
+    try:
+        result = run_calibration_bucket_qa(
+            historical_file,
+            gap_threshold=gap_threshold,
+        )
+        artifacts = write_calibration_bucket_qa_reports(result, output_dir)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(
+        json.dumps(
+            {
+                "dataset_id": result.dataset_id,
+                "gap_threshold": result.report["gap_threshold"],
+                "high_gap_buckets": [
+                    {
+                        "bucket": bucket["bucket"],
+                        "rows": bucket["rows"],
+                        "markets": bucket["markets"],
+                        "absolute_gap": bucket["absolute_gap"],
+                        "warnings": bucket["warnings"],
+                    }
+                    for bucket in result.high_gap_buckets
+                ],
+                "guardrails": result.guardrails,
                 "json_path": str(artifacts.json_path),
                 "markdown_path": str(artifacts.markdown_path),
             },
