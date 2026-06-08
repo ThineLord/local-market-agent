@@ -49,6 +49,12 @@ from local_market_agent.eval.forecast_assessment import (
     ForecastAssessmentEvaluator,
     assign_calibration_bucket,
 )
+from local_market_agent.eval.normalized_availability_audit import (
+    NormalizedAvailabilityAuditArtifacts,
+    NormalizedAvailabilityAuditResult,
+    run_normalized_availability_audit,
+    write_normalized_availability_audit_reports,
+)
 from local_market_agent.eval.offline_strategy import (
     StrategyOfflineEvaluationResult,
     run_strategy_offline_evaluation,
@@ -81,6 +87,8 @@ __all__ = [
     "DEFAULT_QWEN_MODEL",
     "ForecastAssessmentEvaluator",
     "NormalizedCategoryResult",
+    "NormalizedAvailabilityAuditArtifacts",
+    "NormalizedAvailabilityAuditResult",
     "ResearchQualityProviderSpec",
     "StrategyOfflineEvaluationResult",
     "audit_calibration_dataset",
@@ -94,6 +102,7 @@ __all__ = [
     "run_category_normalization_export",
     "run_category_taxonomy_audit",
     "run_daily_provider_comparison",
+    "run_normalized_availability_audit",
     "run_sandbox_provider_comparison",
     "run_strategy_offline_evaluation",
     "write_calibration_audit_reports",
@@ -102,6 +111,7 @@ __all__ = [
     "write_category_calibration_reports",
     "write_category_normalization_reports",
     "write_category_taxonomy_audit_reports",
+    "write_normalized_availability_audit_reports",
 ]
 
 

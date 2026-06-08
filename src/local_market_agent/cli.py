@@ -26,6 +26,7 @@ from local_market_agent.eval import (
     run_category_normalization_export,
     run_category_taxonomy_audit,
     run_daily_provider_comparison,
+    run_normalized_availability_audit,
     run_sandbox_provider_comparison,
     write_calibration_audit_reports,
     write_calibration_bucket_qa_reports,
@@ -33,6 +34,7 @@ from local_market_agent.eval import (
     write_category_calibration_reports,
     write_category_normalization_reports,
     write_category_taxonomy_audit_reports,
+    write_normalized_availability_audit_reports,
 )
 from local_market_agent.eval.offline_strategy import run_strategy_offline_evaluation
 from local_market_agent.llm import (
@@ -780,6 +782,122 @@ def normalize_category_export_command(
                 "unknown_count": result.report["summary"]["unknown_count"],
                 "normalization_usable_for_future_retry": result.report["summary"][
                     "normalization_usable_for_future_retry"
+                ],
+                "guardrails": result.guardrails,
+                "json_path": str(artifacts.json_path),
+                "markdown_path": str(artifacts.markdown_path),
+                "docs_markdown_path": str(artifacts.docs_markdown_path)
+                if artifacts.docs_markdown_path is not None
+                else None,
+            },
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("normalized-availability-audit")
+def normalized_availability_audit_command(
+    source_export_dir: Annotated[
+        Path,
+        typer.Option(
+            "--source-export-dir",
+            help="Local PR-CAL-11 Kalshi normalized source export directory to audit.",
+        ),
+    ],
+    output_dir: Annotated[
+        Path,
+        typer.Option(help="Local normalized availability audit output directory."),
+    ] = Path("data/reports/calibration"),
+    docs_report_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--docs-report-path",
+            help="Optional committed Markdown report path for the availability audit.",
+        ),
+    ] = Path("docs/reports/kalshi_normalized_availability_audit.md"),
+    probe_candles: Annotated[
+        bool,
+        typer.Option(
+            "--probe-candles/--no-probe-candles",
+            help="Opt into bounded public/read-only candlestick probing.",
+        ),
+    ] = False,
+    probe_category: Annotated[
+        str,
+        typer.Option(
+            "--probe-category",
+            help="Normalized category to probe when --probe-candles is enabled.",
+        ),
+    ] = "weather",
+    probe_limit: Annotated[
+        int,
+        typer.Option(
+            "--probe-limit",
+            help="Maximum markets to probe when --probe-candles is enabled.",
+        ),
+    ] = 50,
+    timeout_seconds: Annotated[
+        float,
+        typer.Option(
+            "--timeout-seconds",
+            help="Public endpoint timeout when --probe-candles is enabled.",
+        ),
+    ] = 4.0,
+    period_interval: Annotated[
+        int,
+        typer.Option(
+            "--period-interval",
+            help="Candlestick period interval for optional probe mode.",
+        ),
+    ] = 60,
+) -> None:
+    try:
+        result = run_normalized_availability_audit(
+            source_export_dir,
+            probe_candles=probe_candles,
+            probe_category=probe_category,
+            probe_limit=probe_limit,
+            timeout_seconds=timeout_seconds,
+            period_interval=period_interval,
+        )
+        artifacts = write_normalized_availability_audit_reports(
+            result,
+            output_dir,
+            docs_markdown_path=docs_report_path,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(
+        json.dumps(
+            {
+                "export_id": result.export_id,
+                "collector_diagnostics_status": result.report["source_export"][
+                    "collector_diagnostics_status"
+                ],
+                "weather_availability_diagnosis": result.report[
+                    "weather_availability_diagnosis"
+                ],
+                "fed_macro_taxonomy_diagnosis": result.report[
+                    "fed_macro_taxonomy_diagnosis"
+                ],
+                "probe": {
+                    "enabled": result.report["probe"]["enabled"],
+                    "probe_category": result.report["probe"]["probe_category"],
+                    "attempted_markets": result.report["probe"]["attempted_markets"],
+                    "successful_markets": result.report["probe"]["successful_markets"],
+                    "success_rate": result.report["probe"]["success_rate"],
+                    "historical_dataset_written": result.report["probe"][
+                        "historical_dataset_written"
+                    ],
+                    "historical_rows_imported": result.report["probe"][
+                        "historical_rows_imported"
+                    ],
+                },
+                "larger_retry_justified": result.report["conclusions"][
+                    "larger_retry_justified"
+                ],
+                "recommended_pr_cal_13_action": result.report["conclusions"][
+                    "recommended_pr_cal_13_action"
                 ],
                 "guardrails": result.guardrails,
                 "json_path": str(artifacts.json_path),
