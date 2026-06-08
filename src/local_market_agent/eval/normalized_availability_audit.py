@@ -543,9 +543,15 @@ def _weather_diagnosis(
     attempts = _int_or_zero(diagnostics.get("candle_attempt_count"))
     failures = _int_or_zero(diagnostics.get("candle_failure_count"))
     failure_rate = _safe_div(failures, attempts)
+    category_diagnostics = _dict(weather.get("per_category_diagnostics"))
+    category_attempts = _int_or_zero(category_diagnostics.get("candle_attempt_count"))
+    category_failures = _int_or_zero(category_diagnostics.get("candle_failure_count"))
+    category_successes = _int_or_zero(category_diagnostics.get("candle_success_count"))
 
     if shortfall <= 0:
         primary = "no_weather_shortfall_detected"
+    elif category_attempts > 0 and category_successes == 0 and category_failures:
+        primary = "weather_candle_sparsity_supported_by_per_category_diagnostics"
     elif post_count >= quota and selected_count < quota and failure_rate >= 0.5:
         primary = "candle_sparsity_or_attempt_allocation"
     elif post_count >= quota and selected_count < quota:
@@ -583,7 +589,14 @@ def _weather_diagnosis(
         "global_candle_attempt_count": attempts,
         "global_candle_failure_count": failures,
         "global_candle_failure_rate": failure_rate,
-        "per_category_failure_logs_available": bool(probe.get("enabled")),
+        "weather_candle_attempt_count": category_attempts,
+        "weather_candle_success_count": category_successes,
+        "weather_candle_failure_count": category_failures,
+        "weather_candle_failure_reasons": _dict(
+            category_diagnostics.get("candle_failure_reasons")
+        ),
+        "per_category_failure_logs_available": bool(category_diagnostics)
+        or bool(probe.get("enabled")),
         "probe_summary": _probe_brief(probe) if probe.get("enabled") else {},
         "true_weather_source_scarcity_proven": False,
         "interpretation": _weather_interpretation(primary),
@@ -618,7 +631,11 @@ def _fed_macro_diagnosis(
             else "taxonomy_boundary_review_supported"
         )
     elif pre_count == 0 and post_count == 0 and adjacent_count > 0:
-        primary = "taxonomy_coverage_or_candidate_persistence_gap"
+        primary = (
+            "fed_policy_candidates_absent_in_retained_diagnostics"
+            if unselected_candidate_count
+            else "taxonomy_coverage_or_candidate_persistence_gap"
+        )
     elif post_count < quota:
         primary = "source_availability_or_discovery_gap"
     elif selected_count < quota:
@@ -1104,6 +1121,12 @@ def _suggested_fed_rule_additions(candidates: list[dict[str, Any]]) -> list[str]
 
 
 def _weather_interpretation(primary: str) -> str:
+    if primary == "weather_candle_sparsity_supported_by_per_category_diagnostics":
+        return (
+            "Weather had normalized candidates, and per-category diagnostics show "
+            "weather candle attempts failed without any successful selected weather "
+            "markets. This supports candle sparsity for the bounded retry."
+        )
     if primary == "weather_candle_sparsity_supported_by_probe":
         return (
             "Weather candidates can be discovered, but the bounded probe found "
@@ -1143,6 +1166,13 @@ def _fed_interpretation(primary: str) -> str:
             "PR-CAL-11 reported zero fed_policy_macro candidates but many adjacent "
             "economics_other/unknown candidates. Because unselected examples were "
             "not persisted, true source scarcity is not proven."
+        )
+    if primary == "fed_policy_candidates_absent_in_retained_diagnostics":
+        return (
+            "Retained unselected candidate diagnostics did not surface deterministic "
+            "Fed/rate/CPI/FOMC examples, while normalized fed_policy_macro candidate "
+            "counts were zero. This supports clear absence in the bounded discovery "
+            "diagnostics, not a calibration category-effect claim."
         )
     if primary == "source_availability_or_discovery_gap":
         return (
@@ -1483,6 +1513,9 @@ def _render_markdown(report: dict[str, Any]) -> str:
             f"- Weather post-filter candidates: {weather['post_filter_count']}",
             f"- Weather selected markets: {weather['selected_market_count']}",
             f"- Weather shortfall: {weather['quota_shortfall']}",
+            f"- Weather candle attempts: {weather['weather_candle_attempt_count']}",
+            f"- Weather candle successes: {weather['weather_candle_success_count']}",
+            f"- Weather candle failures: {weather['weather_candle_failure_count']}",
             f"- Interpretation: {weather['interpretation']}",
             f"- True weather source scarcity proven: {weather['true_weather_source_scarcity_proven']}",
             "",

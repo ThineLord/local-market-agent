@@ -162,6 +162,82 @@ def test_unselected_candidate_diagnostics_loaded_when_present(tmp_path: Path):
     assert fed["false_negative_candidate_count"] == 1
 
 
+def test_per_category_weather_failures_drive_weather_diagnosis(tmp_path: Path):
+    diagnostics = _diagnostics(
+        pre_filter={NORMALIZED_WEATHER: 20},
+        post_filter={NORMALIZED_WEATHER: 20},
+        selected={},
+        quotas={NORMALIZED_WEATHER: 10},
+        shortfalls={NORMALIZED_WEATHER: 10},
+        candle_attempts=20,
+        candle_successes=0,
+        candle_failures=20,
+    )
+    diagnostics["per_category"] = {
+        NORMALIZED_WEATHER: {
+            "candle_attempt_count": 20,
+            "candle_success_count": 0,
+            "candle_failure_count": 20,
+            "candle_failure_reasons": {
+                "insufficient_pre_settlement_last_price_candles": 20
+            },
+            "selected_market_count": 0,
+            "selected_row_count": 0,
+        }
+    }
+    diagnostics["per_category_candle_attempt_counts"] = {NORMALIZED_WEATHER: 20}
+    diagnostics["per_category_candle_success_counts"] = {}
+    diagnostics["per_category_candle_failure_counts"] = {NORMALIZED_WEATHER: 20}
+    diagnostics["per_category_candle_failure_reasons"] = {
+        NORMALIZED_WEATHER: {"insufficient_pre_settlement_last_price_candles": 20}
+    }
+    export_dir = _write_export(tmp_path, diagnostics=diagnostics)
+
+    result = run_normalized_availability_audit(export_dir)
+    weather = result.report["weather_availability_diagnosis"]
+
+    assert weather["primary_diagnosis"] == (
+        "weather_candle_sparsity_supported_by_per_category_diagnostics"
+    )
+    assert weather["per_category_failure_logs_available"] is True
+    assert weather["weather_candle_attempt_count"] == 20
+    assert weather["weather_candle_failure_reasons"] == {
+        "insufficient_pre_settlement_last_price_candles": 20
+    }
+
+
+def test_fed_macro_absence_uses_retained_unselected_diagnostics(tmp_path: Path):
+    export_dir = _write_export(
+        tmp_path,
+        diagnostics=_diagnostics(
+            pre_filter={NORMALIZED_UNKNOWN: 2, NORMALIZED_FED_POLICY_MACRO: 0},
+            post_filter={NORMALIZED_UNKNOWN: 2, NORMALIZED_FED_POLICY_MACRO: 0},
+            selected={},
+            quotas={NORMALIZED_FED_POLICY_MACRO: 1},
+            shortfalls={NORMALIZED_FED_POLICY_MACRO: 1},
+        ),
+        unselected_candidates=[
+            {
+                "ticker": "KXUNKNOWN-26MAY",
+                "title": "Will a local event happen next week?",
+                "source_category": "unknown",
+                "normalized_category": NORMALIZED_UNKNOWN,
+                "semantic_category": NORMALIZED_UNKNOWN,
+                "warnings": [],
+            }
+        ],
+    )
+
+    result = run_normalized_availability_audit(export_dir)
+    fed = result.report["fed_macro_taxonomy_diagnosis"]
+
+    assert fed["primary_diagnosis"] == (
+        "fed_policy_candidates_absent_in_retained_diagnostics"
+    )
+    assert fed["source_scarcity_proven"] is False
+    assert "unselected_candidate_examples_missing_warning" not in fed["warnings"]
+
+
 def test_probe_mode_does_not_write_historical_dataset_rows(tmp_path: Path):
     export_dir = _write_export(tmp_path, diagnostics=_diagnostics())
     client = FakeProbeClient()
