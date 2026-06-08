@@ -76,7 +76,8 @@ WEATHER_RULES = (
 FED_POLICY_RULES = (
     ("fed_ticker", r"kx(?:fed|fomc)"),
     ("fed_keyword", r"\bfed\b|\bfederal reserve\b|\bfomc\b"),
-    ("rates", r"\binterest rates?\b|\brate cut\b|\brate hike\b|\bcut rate\b"),
+    ("fed_funds", r"\bfed funds\b|\bfederal funds\b"),
+    ("rates", r"\binterest[- ]rates?\b|\brate cuts?\b|\brate hikes?\b|\bcut rates?\b"),
     ("inflation", r"\bcpi\b|\bppi\b|\binflation\b"),
     ("monetary_policy", r"\bmonetary policy\b"),
     ("fed_speaker", r"\bpowell\b|\bgoolsbee\b|\bbowman\b|\bwaller\b"),
@@ -226,7 +227,9 @@ def run_category_normalization_export(
 ) -> CategoryNormalizationExportResult:
     export_dir = Path(source_export_dir)
     markets_path = export_dir / "markets.jsonl"
+    unselected_path = export_dir / "unselected_candidates.jsonl"
     markets = _load_markets(markets_path)
+    unselected_candidates = _load_jsonl_optional(unselected_path)
     normalized_markets = []
     for market in markets:
         result = normalize_market_category(market)
@@ -241,7 +244,18 @@ def run_category_normalization_export(
                 **result.as_dict(),
             }
         )
+    normalized_unselected = _normalize_unselected_candidates(unselected_candidates)
     summary = _normalization_summary(normalized_markets)
+    summary["unselected_candidate_count"] = len(normalized_unselected)
+    summary["unselected_candidate_category_counts"] = dict(
+        sorted(
+            Counter(
+                str(candidate["normalized_category"])
+                for candidate in normalized_unselected
+            ).items()
+        )
+    )
+    summary["unselected_candidate_samples"] = _sample_markets(normalized_unselected)
     report = {
         "report_id": f"category_normalization_{_safe_filename(export_dir.name)}",
         "phase": "PR-CAL-10",
@@ -251,10 +265,16 @@ def run_category_normalization_export(
             "source_export_dir": str(export_dir),
             "markets_path": str(markets_path),
             "market_count": len(markets),
+            "unselected_candidates_path": str(unselected_path),
+            "unselected_candidates_status": "loaded"
+            if unselected_path.exists()
+            else "missing",
+            "unselected_candidate_count": len(unselected_candidates),
         },
         "normalized_categories": list(NORMALIZED_CATEGORIES),
         "summary": summary,
         "markets": normalized_markets,
+        "unselected_candidates": normalized_unselected,
         "guardrails": _guardrails(),
     }
     return CategoryNormalizationExportResult(report=report)
@@ -395,6 +415,30 @@ def _sample_markets(markets: list[dict[str, Any]], *, limit: int = 15) -> list[d
     ]
 
 
+def _normalize_unselected_candidates(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized = []
+    for row in rows:
+        result = normalize_market_category(row)
+        source_category = _text(row.get("source_category")) or result.source_category
+        normalized_category = _text(row.get("normalized_category")) or result.normalized_category
+        semantic_category = _text(row.get("semantic_category")) or result.semantic_category
+        warnings = row.get("warnings") if isinstance(row.get("warnings"), list) else None
+        normalized.append(
+            {
+                "ticker": _text(row.get("ticker")) or "missing",
+                "title": _text(row.get("title")) or "missing",
+                "source_category": source_category,
+                "normalized_category": normalized_category,
+                "semantic_category": semantic_category,
+                "is_mention_market": bool(
+                    row.get("is_mention_market") or result.is_mention_market
+                ),
+                "warnings": list(warnings) if warnings is not None else list(result.warnings),
+            }
+        )
+    return normalized
+
+
 def _load_markets(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         msg = f"markets.jsonl not found: {path}"
@@ -410,6 +454,25 @@ def _load_markets(path: Path) -> list[dict[str, Any]]:
             raise ValueError(msg) from exc
         if not isinstance(payload, dict):
             msg = f"markets JSONL line {line_number} must be an object"
+            raise ValueError(msg)
+        rows.append(payload)
+    return rows
+
+
+def _load_jsonl_optional(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError as exc:
+            msg = f"JSONL line {line_number} in {path} is invalid JSON"
+            raise ValueError(msg) from exc
+        if not isinstance(payload, dict):
+            msg = f"JSONL line {line_number} in {path} must be an object"
             raise ValueError(msg)
         rows.append(payload)
     return rows
@@ -511,9 +574,11 @@ def _render_markdown(report: dict[str, Any]) -> str:
         "## Inputs",
         "",
         f"- Source export dir: `{source['source_export_dir']}`",
-        f"- Markets path: `{source['markets_path']}`",
-        f"- Market count: {market_count}",
-        "",
+            f"- Markets path: `{source['markets_path']}`",
+            f"- Market count: {market_count}",
+            f"- Unselected candidates status: `{source['unselected_candidates_status']}`",
+            f"- Unselected candidate count: {source['unselected_candidate_count']}",
+            "",
         "## Normalized Category Findings",
         "",
         "| Category | Count | Share |",
@@ -538,6 +603,7 @@ def _render_markdown(report: dict[str, Any]) -> str:
             f"- Public-event mismatch count: {summary['public_event_mismatch_count']}",
             f"- Mention-market count: {summary['mention_market_count']}",
             f"- Unknown normalized count: {summary['unknown_count']}",
+            f"- Unselected diagnostic candidate count: {summary['unselected_candidate_count']}",
             f"- Future retry taxonomy usable: `{summary['normalization_usable_for_future_retry']}`",
             "",
             "Public-event mismatch samples:",
@@ -547,6 +613,10 @@ def _render_markdown(report: dict[str, Any]) -> str:
     lines.extend(_sample_lines(summary["public_event_mismatch_samples"]))
     lines.extend(["", "Mention-market samples:", ""])
     lines.extend(_sample_lines(summary["mention_market_samples"]))
+    lines.extend(["", "Unselected diagnostic candidate samples:", ""])
+    lines.extend(_sample_lines(summary["unselected_candidate_samples"]))
+    lines.extend(["", "Unselected diagnostic candidate category counts:", ""])
+    lines.extend(_counter_lines(summary["unselected_candidate_category_counts"]))
     lines.extend(
         [
             "",

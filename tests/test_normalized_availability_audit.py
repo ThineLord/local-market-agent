@@ -101,10 +101,65 @@ def test_fed_macro_false_negative_candidates_surfaced_from_adjacent_categories(
 
     assert diagnosis["primary_diagnosis"] == "taxonomy_false_negatives_supported"
     assert diagnosis["semantic_rule_gap_supported"] is True
-    assert len(false_negatives) == 2
-    assert false_negatives[0]["suggested_normalized_category"] == (
-        NORMALIZED_FED_POLICY_MACRO
+    assert diagnosis["false_negative_candidate_count"] == 1
+    assert diagnosis["macro_boundary_candidate_count"] == 2
+    suggested = {
+        item["ticker"]: item["suggested_normalized_category"]
+        for item in false_negatives
+    }
+    assert suggested["KXPCE-26MAY"] == NORMALIZED_FED_POLICY_MACRO
+    assert suggested["KXJOBS-26MAY"] == NORMALIZED_ECONOMICS_OTHER
+
+
+def test_unselected_candidate_diagnostics_loaded_when_present(tmp_path: Path):
+    export_dir = _write_export(
+        tmp_path,
+        diagnostics=_diagnostics(
+            pre_filter={
+                NORMALIZED_ECONOMICS_OTHER: 1,
+                NORMALIZED_FED_POLICY_MACRO: 0,
+                NORMALIZED_WEATHER: 1,
+            },
+            post_filter={
+                NORMALIZED_ECONOMICS_OTHER: 1,
+                NORMALIZED_FED_POLICY_MACRO: 0,
+                NORMALIZED_WEATHER: 1,
+            },
+            selected={NORMALIZED_SPORTS_TENNIS: 1},
+            quotas={NORMALIZED_FED_POLICY_MACRO: 1, NORMALIZED_WEATHER: 1},
+            shortfalls={NORMALIZED_FED_POLICY_MACRO: 1, NORMALIZED_WEATHER: 1},
+        ),
+        unselected_candidates=[
+            {
+                "ticker": "KXFEDRATE-26MAY",
+                "title": "Will the Federal Reserve announce a rate cut?",
+                "source_category": "unknown",
+                "normalized_category": NORMALIZED_UNKNOWN,
+                "semantic_category": NORMALIZED_UNKNOWN,
+                "warnings": [],
+            },
+            {
+                "ticker": "KXRAIN-26MAY",
+                "title": "Will New York City receive rain tomorrow?",
+                "source_category": "weather",
+                "normalized_category": NORMALIZED_WEATHER,
+                "semantic_category": NORMALIZED_WEATHER,
+                "warnings": [],
+            },
+        ],
     )
+
+    result = run_normalized_availability_audit(export_dir)
+
+    assert result.report["source_export"]["unselected_candidates_status"] == "loaded"
+    assert result.report["unselected_candidate_summary"]["candidate_count"] == 2
+    assert result.report["category_availability"][NORMALIZED_WEATHER][
+        "unselected_example_count"
+    ] == 1
+    assert result.report["weather_candidate_examples"][0]["ticker"] == "KXRAIN-26MAY"
+    fed = result.report["fed_macro_taxonomy_diagnosis"]
+    assert fed["primary_diagnosis"] == "taxonomy_false_negatives_supported"
+    assert fed["false_negative_candidate_count"] == 1
 
 
 def test_probe_mode_does_not_write_historical_dataset_rows(tmp_path: Path):
@@ -146,6 +201,19 @@ def test_missing_diagnostics_handled_safely(tmp_path: Path):
         "no_weather_shortfall_detected",
         "unknown",
     }
+
+
+def test_old_diagnostics_payload_without_per_category_fields_is_compatible(
+    tmp_path: Path,
+):
+    export_dir = _write_export(tmp_path, diagnostics=_diagnostics())
+
+    result = run_normalized_availability_audit(export_dir)
+
+    assert result.report["diagnostics_summary"]["per_category"] == {}
+    assert result.report["category_availability"][NORMALIZED_WEATHER][
+        "per_category_diagnostics"
+    ] == {}
 
 
 def test_normalized_availability_audit_cli_writes_json_and_markdown(tmp_path: Path):
@@ -248,6 +316,7 @@ def _write_export(
     *,
     diagnostics: dict[str, object] | None,
     markets: list[dict[str, object]] | None = None,
+    unselected_candidates: list[dict[str, object]] | None = None,
     write_diagnostics: bool = True,
 ) -> Path:
     export_dir = tmp_path / "source_exports" / "kalshi_normalized_synthetic"
@@ -283,6 +352,19 @@ def _write_export(
         encoding="utf-8",
     )
     (export_dir / "evidence.jsonl").write_text("", encoding="utf-8")
+    if unselected_candidates is not None:
+        (export_dir / "unselected_candidates.jsonl").write_text(
+            "\n".join(
+                json.dumps(candidate, sort_keys=True)
+                for candidate in unselected_candidates
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (export_dir / "unselected_candidates_summary.md").write_text(
+            "# synthetic unselected diagnostics\n",
+            encoding="utf-8",
+        )
     manifest = {
         "export_id": "kalshi_normalized_synthetic",
         "collection_summary": {

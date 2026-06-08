@@ -44,6 +44,9 @@ FED_MACRO_DIAGNOSTIC_RULES = (
     ("growth", r"\bgdp\b|\bretail sales\b"),
     ("fed_speaker", r"\bpowell\b|\bgoolsbee\b|\bbowman\b|\bwaller\b"),
 )
+FED_POLICY_DIAGNOSTIC_RULE_NAMES = frozenset(
+    {"fed", "rates", "inflation", "fed_speaker"}
+)
 
 
 @dataclass(frozen=True)
@@ -133,28 +136,34 @@ def run_normalized_availability_audit(
     markets_path = export_dir / "markets.jsonl"
     candlesticks_path = export_dir / "candlesticks.jsonl"
     diagnostics_path = export_dir / "collector_diagnostics.json"
+    unselected_path = export_dir / "unselected_candidates.jsonl"
+    unselected_summary_path = export_dir / "unselected_candidates_summary.md"
 
     manifest = _load_json_optional(manifest_path)
     markets = _load_jsonl_optional(markets_path)
     candles = _load_jsonl_optional(candlesticks_path)
+    unselected_candidates = _load_jsonl_optional(unselected_path)
     diagnostics, diagnostics_status = _load_collector_diagnostics(
         manifest=manifest,
         diagnostics_path=diagnostics_path,
     )
 
     selected_records = _selected_market_records(markets=markets, candles=candles)
+    unselected_records = _unselected_candidate_records(unselected_candidates)
+    combined_candidate_records = [*selected_records, *unselected_records]
     category_analysis = _category_analysis(
         diagnostics=diagnostics,
         selected_records=selected_records,
         candles=candles,
+        unselected_records=unselected_records,
     )
     selected_summary = _selected_summary(selected_records)
     weather_examples = _category_examples(
-        selected_records,
+        combined_candidate_records,
         NORMALIZED_WEATHER,
         limit=10,
     )
-    fed_false_negatives = _fed_macro_false_negative_candidates(selected_records)
+    fed_false_negatives = _fed_macro_false_negative_candidates(combined_candidate_records)
 
     probe = _empty_probe_result(
         enabled=probe_candles,
@@ -174,10 +183,12 @@ def run_normalized_availability_audit(
         category_analysis=category_analysis,
         diagnostics=diagnostics,
         probe=probe,
+        weather_example_count=len(weather_examples),
     )
     fed_macro_diagnosis = _fed_macro_diagnosis(
         category_analysis=category_analysis,
         fed_false_negatives=fed_false_negatives,
+        unselected_candidate_count=len(unselected_records),
     )
     conclusions = _conclusions(
         weather_diagnosis=weather_diagnosis,
@@ -196,17 +207,27 @@ def run_normalized_availability_audit(
             "markets_path": str(markets_path),
             "candlesticks_path": str(candlesticks_path),
             "collector_diagnostics_path": str(diagnostics_path),
+            "unselected_candidates_path": str(unselected_path),
+            "unselected_candidates_summary_path": str(unselected_summary_path),
             "manifest_status": "loaded" if manifest else "missing",
             "markets_status": "loaded" if markets else "missing",
             "candlesticks_status": "loaded" if candles else "missing",
             "collector_diagnostics_status": diagnostics_status,
+            "unselected_candidates_status": "loaded"
+            if unselected_path.exists()
+            else "missing",
+            "unselected_candidates_summary_status": "loaded"
+            if unselected_summary_path.exists()
+            else "missing",
             "selected_market_count": len(markets),
+            "unselected_candidate_count": len(unselected_candidates),
             "candlestick_row_count": len(candles),
             "collection_summary": _dict(manifest.get("collection_summary")),
             "safety": _dict(manifest.get("safety")),
         },
         "diagnostics_summary": _diagnostics_summary(diagnostics, diagnostics_status),
         "selected_category_summary": selected_summary,
+        "unselected_candidate_summary": _unselected_summary(unselected_records),
         "category_availability": category_analysis,
         "weather_candidate_examples": weather_examples,
         "fed_macro_false_negative_candidates": fed_false_negatives,
@@ -314,6 +335,47 @@ def _selected_market_records(
     return sorted(records, key=lambda row: (row["normalized_category"], row["ticker"]))
 
 
+def _unselected_candidate_records(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    records = []
+    for row in rows:
+        ticker = _text(row.get("ticker")) or "missing"
+        title = _text(row.get("title")) or "missing"
+        normalized_category = _text(row.get("normalized_category")) or "unknown"
+        semantic_category = _text(row.get("semantic_category")) or "unknown"
+        source_category = _text(row.get("source_category")) or "unknown"
+        records.append(
+            {
+                "ticker": ticker,
+                "title": title,
+                "event_ticker": _text(row.get("event_ticker")) or "missing",
+                "series_ticker": _text(row.get("series_ticker")) or "missing",
+                "source_family": _text(row.get("source_family")) or "missing",
+                "source_category": source_category,
+                "normalized_category": normalized_category,
+                "semantic_category": semantic_category,
+                "is_mention_market": bool(row.get("is_mention_market")),
+                "normalization_warnings": _list(row.get("warnings")),
+                "row_count": 0,
+                "fed_macro_diagnostic_rules": _matched_rule_names(
+                    " ".join(
+                        text
+                        for text in (
+                            ticker,
+                            title,
+                            _text(row.get("reason")) or "",
+                        )
+                        if text
+                    ),
+                    FED_MACRO_DIAGNOSTIC_RULES,
+                ),
+                "status": "unselected_candidate",
+                "market_type": "diagnostic_only",
+                "candidate_selection_status": "unselected",
+            }
+        )
+    return sorted(records, key=lambda row: (row["normalized_category"], row["ticker"]))
+
+
 def _selected_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
     by_category: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for record in records:
@@ -340,11 +402,31 @@ def _selected_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
     return summary
 
 
+def _unselected_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
+    counts = Counter(str(record["normalized_category"]) for record in records)
+    return {
+        "candidate_count": len(records),
+        "category_counts": dict(sorted(counts.items())),
+        "samples": [
+            {
+                "ticker": record["ticker"],
+                "title": record["title"],
+                "normalized_category": record["normalized_category"],
+                "semantic_category": record["semantic_category"],
+            }
+            for record in records[:25]
+        ],
+        "diagnostics_only": True,
+        "not_imported_as_historical_rows": True,
+    }
+
+
 def _category_analysis(
     *,
     diagnostics: dict[str, Any],
     selected_records: list[dict[str, Any]],
     candles: list[dict[str, Any]],
+    unselected_records: list[dict[str, Any]],
 ) -> dict[str, Any]:
     pre_counts = _counter_dict(diagnostics.get("pre_filter_category_counts"))
     post_counts = _counter_dict(diagnostics.get("post_filter_category_counts"))
@@ -352,7 +434,12 @@ def _category_analysis(
     quota_targets = _counter_dict(diagnostics.get("quota_targets"))
     quota_shortfalls = _counter_dict(diagnostics.get("quota_shortfalls"))
     quota_filled = _counter_dict(diagnostics.get("quota_filled"))
+    per_category = _dict(diagnostics.get("per_category"))
+    per_category_selected_rows = _counter_dict(
+        diagnostics.get("per_category_selected_row_counts")
+    )
     selected_from_markets = Counter(str(record["normalized_category"]) for record in selected_records)
+    unselected_counts = Counter(str(record["normalized_category"]) for record in unselected_records)
     rows_by_market = Counter(_text(candle.get("market_ticker")) or "missing" for candle in candles)
     category_by_market = {
         str(record["ticker"]): str(record["normalized_category"])
@@ -368,6 +455,7 @@ def _category_analysis(
         market_row_counts[category].append(count)
 
     categories = set(pre_counts) | set(post_counts) | set(selected_counts) | set(quota_targets)
+    categories.update(unselected_counts)
     categories.update({NORMALIZED_WEATHER, NORMALIZED_FED_POLICY_MACRO, NORMALIZED_ECONOMICS_OTHER, NORMALIZED_UNKNOWN})
     analysis: dict[str, Any] = {}
     for category in sorted(categories):
@@ -385,7 +473,11 @@ def _category_analysis(
             "pre_filter_count": pre,
             "post_filter_count": post,
             "selected_market_count": selected,
-            "selected_row_count": row_total,
+            "selected_row_count": per_category_selected_rows.get(category, row_total),
+            "unselected_example_count": unselected_counts.get(category, 0),
+            "per_category_diagnostics": _dict(per_category.get(category))
+            if isinstance(per_category, dict)
+            else {},
             "rows_per_selected_market_mean": _safe_div(row_total, selected),
             "rows_per_selected_market_min": min(row_values) if row_values else 0,
             "rows_per_selected_market_max": max(row_values) if row_values else 0,
@@ -418,6 +510,19 @@ def _diagnostics_summary(
         "candle_success_rate": _safe_div(successes, attempts),
         "candle_failure_rate": _safe_div(failures, attempts),
         "candle_failure_reasons": _counter_dict(diagnostics.get("candle_failure_reasons")),
+        "per_category": _dict(diagnostics.get("per_category")),
+        "per_category_candle_attempt_counts": _counter_dict(
+            diagnostics.get("per_category_candle_attempt_counts")
+        ),
+        "per_category_candle_success_counts": _counter_dict(
+            diagnostics.get("per_category_candle_success_counts")
+        ),
+        "per_category_candle_failure_counts": _counter_dict(
+            diagnostics.get("per_category_candle_failure_counts")
+        ),
+        "per_category_candle_failure_reasons": _dict(
+            diagnostics.get("per_category_candle_failure_reasons")
+        ),
         "filter_losses": _dict(diagnostics.get("filter_losses")),
         "warnings": [] if diagnostics else [WARNING_DIAGNOSTICS_MISSING],
     }
@@ -428,6 +533,7 @@ def _weather_diagnosis(
     category_analysis: dict[str, Any],
     diagnostics: dict[str, Any],
     probe: dict[str, Any],
+    weather_example_count: int,
 ) -> dict[str, Any]:
     weather = category_analysis.get(NORMALIZED_WEATHER, {})
     quota = _int_or_zero(weather.get("quota_target"))
@@ -461,7 +567,10 @@ def _weather_diagnosis(
     warnings = []
     if shortfall > 0 and post_count >= quota:
         warnings.append(WARNING_WEATHER_CANDLE_OR_ALLOCATION)
-    if not _category_examples_from_probe_or_selected(probe, NORMALIZED_WEATHER):
+    if (
+        weather_example_count == 0
+        and not _category_examples_from_probe_or_selected(probe, NORMALIZED_WEATHER)
+    ):
         warnings.append(WARNING_UNSELECTED_CANDIDATES_NOT_PERSISTED)
 
     return {
@@ -486,6 +595,7 @@ def _fed_macro_diagnosis(
     *,
     category_analysis: dict[str, Any],
     fed_false_negatives: list[dict[str, Any]],
+    unselected_candidate_count: int,
 ) -> dict[str, Any]:
     fed = category_analysis.get(NORMALIZED_FED_POLICY_MACRO, {})
     economics = category_analysis.get(NORMALIZED_ECONOMICS_OTHER, {})
@@ -502,7 +612,11 @@ def _fed_macro_diagnosis(
     if shortfall <= 0:
         primary = "no_fed_macro_shortfall_detected"
     elif fed_false_negatives:
-        primary = "taxonomy_false_negatives_supported"
+        primary = (
+            "taxonomy_false_negatives_supported"
+            if _fed_policy_candidate_count(fed_false_negatives)
+            else "taxonomy_boundary_review_supported"
+        )
     elif pre_count == 0 and post_count == 0 and adjacent_count > 0:
         primary = "taxonomy_coverage_or_candidate_persistence_gap"
     elif post_count < quota:
@@ -513,16 +627,21 @@ def _fed_macro_diagnosis(
         primary = "unknown"
 
     suggested_rules = _suggested_fed_rule_additions(fed_false_negatives)
-    if not suggested_rules and shortfall > 0:
+    if not suggested_rules and shortfall > 0 and unselected_candidate_count == 0:
         suggested_rules = [
             "persist unselected economics_other and unknown candidate examples before changing rules",
+            "keep fed_policy_macro separate from generic economics_other unless deterministic Fed/rate/CPI/FOMC signals are present",
+        ]
+    elif not suggested_rules and shortfall > 0:
+        suggested_rules = [
+            "review retained economics_other and unknown examples before changing rules",
             "keep fed_policy_macro separate from generic economics_other unless deterministic Fed/rate/CPI/FOMC signals are present",
         ]
 
     warnings = []
     if shortfall > 0:
         warnings.append(WARNING_FED_MACRO_TAXONOMY_GAP)
-    if adjacent_count > 0 and not fed_false_negatives:
+    if adjacent_count > 0 and not fed_false_negatives and unselected_candidate_count == 0:
         warnings.append(WARNING_UNSELECTED_CANDIDATES_NOT_PERSISTED)
 
     return {
@@ -535,9 +654,12 @@ def _fed_macro_diagnosis(
         "economics_other_post_filter_count": _int_or_zero(economics.get("post_filter_count")),
         "unknown_post_filter_count": _int_or_zero(unknown.get("post_filter_count")),
         "adjacent_macro_or_unknown_post_filter_count": adjacent_count,
-        "false_negative_candidate_count": len(fed_false_negatives),
+        "false_negative_candidate_count": _fed_policy_candidate_count(
+            fed_false_negatives
+        ),
+        "macro_boundary_candidate_count": len(fed_false_negatives),
         "source_scarcity_proven": False if adjacent_count or fed_false_negatives else post_count < quota,
-        "semantic_rule_gap_supported": bool(fed_false_negatives),
+        "semantic_rule_gap_supported": bool(_fed_policy_candidate_count(fed_false_negatives)),
         "suggested_normalization_rule_additions": suggested_rules,
         "interpretation": _fed_interpretation(primary),
         "warnings": list(dict.fromkeys(warnings)),
@@ -562,6 +684,7 @@ def _conclusions(
         and fed_primary
         in {
             "taxonomy_false_negatives_supported",
+            "taxonomy_boundary_review_supported",
             "taxonomy_coverage_or_candidate_persistence_gap",
             "source_availability_or_discovery_gap",
         }
@@ -601,11 +724,34 @@ def _fed_macro_false_negative_candidates(records: list[dict[str, Any]]) -> list[
                 "normalized_category": category,
                 "semantic_category": record["semantic_category"],
                 "matched_fed_macro_rules": matches,
-                "suggested_normalized_category": NORMALIZED_FED_POLICY_MACRO,
+                "suggested_normalized_category": _suggested_candidate_category(
+                    matches
+                ),
+                "boundary_type": _candidate_boundary_type(matches),
                 "heuristic_not_hard_truth": True,
             }
         )
     return sorted(candidates, key=lambda item: (item["normalized_category"], item["ticker"]))[:25]
+
+
+def _fed_policy_candidate_count(candidates: list[dict[str, Any]]) -> int:
+    return sum(
+        1
+        for candidate in candidates
+        if candidate.get("suggested_normalized_category") == NORMALIZED_FED_POLICY_MACRO
+    )
+
+
+def _suggested_candidate_category(matches: list[str]) -> str:
+    if any(match in FED_POLICY_DIAGNOSTIC_RULE_NAMES for match in matches):
+        return NORMALIZED_FED_POLICY_MACRO
+    return NORMALIZED_ECONOMICS_OTHER
+
+
+def _candidate_boundary_type(matches: list[str]) -> str:
+    if any(match in FED_POLICY_DIAGNOSTIC_RULE_NAMES for match in matches):
+        return "fed_policy_macro_candidate"
+    return "generic_economics_other_candidate"
 
 
 def _category_examples(
@@ -986,6 +1132,12 @@ def _fed_interpretation(primary: str) -> str:
             "Local examples in economics_other/unknown matched Fed or macro keywords, "
             "so deterministic normalization rules should be reviewed before another retry."
         )
+    if primary == "taxonomy_boundary_review_supported":
+        return (
+            "Local economics_other/unknown examples matched generic macro keywords, "
+            "but not clear Fed-policy rules. Keep these separate unless deterministic "
+            "Fed/rate/CPI/FOMC signals are present."
+        )
     if primary == "taxonomy_coverage_or_candidate_persistence_gap":
         return (
             "PR-CAL-11 reported zero fed_policy_macro candidates but many adjacent "
@@ -1250,6 +1402,8 @@ def _render_markdown(report: dict[str, Any]) -> str:
         f"- Markets status: `{source['markets_status']}`",
         f"- Candlesticks status: `{source['candlesticks_status']}`",
         f"- Collector diagnostics status: `{source['collector_diagnostics_status']}`",
+        f"- Unselected candidates status: `{source['unselected_candidates_status']}`",
+        f"- Unselected candidate count: {source['unselected_candidate_count']}",
         "",
         "## PR-CAL-11 Counts",
         "",
@@ -1282,8 +1436,8 @@ def _render_markdown(report: dict[str, Any]) -> str:
             "",
             "## Category Availability",
             "",
-            "| Category | Quota | Pre-filter | Post-filter | Selected | Shortfall | Rows |",
-            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| Category | Quota | Pre-filter | Post-filter | Selected | Shortfall | Rows | Unselected examples |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
     for category, stats in sorted(report["category_availability"].items()):
@@ -1297,8 +1451,27 @@ def _render_markdown(report: dict[str, Any]) -> str:
         lines.append(
             f"| `{category}` | {stats['quota_target']} | {stats['pre_filter_count']} | "
             f"{stats['post_filter_count']} | {stats['selected_market_count']} | "
-            f"{stats['quota_shortfall']} | {stats['selected_row_count']} |"
+            f"{stats['quota_shortfall']} | {stats['selected_row_count']} | "
+            f"{stats['unselected_example_count']} |"
         )
+
+    unselected = report["unselected_candidate_summary"]
+    lines.extend(
+        [
+            "",
+            "## Unselected Candidate Diagnostics",
+            "",
+            f"- Candidate count: {unselected['candidate_count']}",
+            f"- Diagnostics only: {unselected['diagnostics_only']}",
+            f"- Not imported as historical rows: {unselected['not_imported_as_historical_rows']}",
+            "",
+            "Unselected candidate category counts:",
+            "",
+        ]
+    )
+    lines.extend(_counter_lines(unselected["category_counts"]))
+    lines.extend(["", "Unselected candidate samples:", ""])
+    lines.extend(_example_lines(unselected["samples"]))
 
     lines.extend(
         [

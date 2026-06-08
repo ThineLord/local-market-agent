@@ -72,6 +72,7 @@ DEFAULT_PERIOD_INTERVAL = 60
 DEFAULT_TIMEOUT_SECONDS = 4.0
 NETWORK_FAILURE_EXIT_CODE = 2
 MIN_CANDLES_PER_SELECTED_MARKET = 4
+DEFAULT_UNSELECTED_CANDIDATE_CAP = 25
 DEFAULT_QUOTAS = {
     NORMALIZED_SPORTS_TENNIS: 30,
     NORMALIZED_SPORTS_MAJOR: 20,
@@ -181,6 +182,7 @@ def main(argv: list[str] | None = None) -> int:
             quotas=quotas,
             max_candle_market_attempts=args.max_candle_market_attempts,
             period_interval=args.period_interval,
+            unselected_candidate_cap=args.unselected_candidate_cap,
             dry_run=args.dry_run,
         )
     except RuntimeError as exc:
@@ -237,6 +239,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=positive_float,
         default=DEFAULT_TIMEOUT_SECONDS,
     )
+    parser.add_argument(
+        "--unselected-candidate-cap",
+        type=non_negative_int,
+        default=DEFAULT_UNSELECTED_CANDIDATE_CAP,
+        help="Diagnostics-only cap for unselected candidate examples per normalized category.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args(argv)
 
@@ -253,7 +261,8 @@ def collect_normalized_calibration(
     quotas: dict[str, int],
     max_candle_market_attempts: int,
     period_interval: int,
-    dry_run: bool,
+    unselected_candidate_cap: int = DEFAULT_UNSELECTED_CANDIDATE_CAP,
+    dry_run: bool = False,
 ) -> NormalizedCalibrationCollectionResult:
     validate_collection_request(target_markets=target_markets, quotas=quotas)
     export_dir = output_root / export_id
@@ -309,13 +318,25 @@ def collect_normalized_calibration(
                 continue
             selected.append(selected_item)
             selected_counts[category] += 1
-            diagnostics.record_selected_category(category)
+            diagnostics.record_selected_category(
+                category,
+                row_count=len(selected_item.candles),
+            )
             time.sleep(0.03)
         if not made_progress:
             break
 
     selected_markets = [to_export_market(item) for item in selected]
     selected_candles = [candle for item in selected for candle in item.candles]
+    unselected_examples = bounded_unselected_candidate_examples(
+        discovered,
+        selected=selected,
+        cap_per_category=unselected_candidate_cap,
+    )
+    unselected_available_counts = unselected_candidate_available_counts(
+        discovered,
+        selected=selected,
+    )
     category_counts = dict(Counter(item.category for item in selected))
     diagnostics_payload = diagnostics.as_dict()
     availability_limitations = tuple(diagnostics_payload["availability_limitations"])
@@ -357,6 +378,16 @@ def collect_normalized_calibration(
     sprint1.write_jsonl(export_dir / "markets.jsonl", selected_markets)
     sprint1.write_jsonl(export_dir / "candlesticks.jsonl", selected_candles)
     sprint1.write_jsonl(export_dir / "evidence.jsonl", [])
+    sprint1.write_jsonl(export_dir / "unselected_candidates.jsonl", unselected_examples)
+    (export_dir / "unselected_candidates_summary.md").write_text(
+        render_unselected_candidates_summary(
+            export_id=export_id,
+            cap_per_category=unselected_candidate_cap,
+            available_counts=unselected_available_counts,
+            examples=unselected_examples,
+        ),
+        encoding="utf-8",
+    )
     manifest = build_manifest(
         export_id=export_id,
         export_dir=export_dir,
@@ -371,6 +402,9 @@ def collect_normalized_calibration(
         max_candle_market_attempts=max_candle_market_attempts,
         availability_limitations=availability_limitations,
         non_quota_category_counts=dict(sorted(non_quota_category_counts.items())),
+        unselected_candidate_cap=unselected_candidate_cap,
+        unselected_candidate_count=len(unselected_examples),
+        unselected_available_counts=unselected_available_counts,
         target_status_value=status,
     )
     (export_dir / "source_manifest.json").write_text(
@@ -395,6 +429,8 @@ def collect_normalized_calibration(
             availability_limitations=availability_limitations,
             target_status_value=status,
             diagnostics=diagnostics_payload,
+            unselected_candidate_count=len(unselected_examples),
+            unselected_candidate_cap=unselected_candidate_cap,
         ),
         encoding="utf-8",
     )
@@ -581,10 +617,15 @@ def try_select_market(
         diagnostics.record_candle_attempt(
             success=False,
             failure_reason="candlestick_request_failed",
+            category=candidate.category,
         )
         return None
     if not raw_candles:
-        diagnostics.record_candle_attempt(success=False, failure_reason="no_candles_returned")
+        diagnostics.record_candle_attempt(
+            success=False,
+            failure_reason="no_candles_returned",
+            category=candidate.category,
+        )
         return None
     sampled = sample_calibration_candles(
         candidate=candidate,
@@ -596,9 +637,10 @@ def try_select_market(
         diagnostics.record_candle_attempt(
             success=False,
             failure_reason="insufficient_pre_settlement_last_price_candles",
+            category=candidate.category,
         )
         return None
-    diagnostics.record_candle_attempt(success=True)
+    diagnostics.record_candle_attempt(success=True, category=candidate.category)
     return SelectedMarket(
         candidate=candidate,
         period_interval=period_interval,
@@ -659,6 +701,80 @@ def to_export_market(item: SelectedMarket) -> dict[str, Any]:
     return row
 
 
+def bounded_unselected_candidate_examples(
+    candidates: list[NormalizedCandidateMarket],
+    *,
+    selected: list[SelectedMarket],
+    cap_per_category: int = DEFAULT_UNSELECTED_CANDIDATE_CAP,
+) -> list[dict[str, Any]]:
+    selected_tickers = {item.market.ticker for item in selected}
+    retained_counts: Counter[str] = Counter()
+    examples = []
+    for candidate in candidates:
+        if candidate.market.ticker in selected_tickers:
+            continue
+        category = candidate.category
+        if retained_counts[category] >= cap_per_category:
+            continue
+        retained_counts[category] += 1
+        examples.append(to_unselected_candidate_example(candidate))
+    return examples
+
+
+def unselected_candidate_available_counts(
+    candidates: list[NormalizedCandidateMarket],
+    *,
+    selected: list[SelectedMarket],
+) -> dict[str, int]:
+    selected_tickers = {item.market.ticker for item in selected}
+    counts = Counter(
+        candidate.category
+        for candidate in candidates
+        if candidate.market.ticker not in selected_tickers
+    )
+    return dict(sorted(counts.items()))
+
+
+def to_unselected_candidate_example(candidate: NormalizedCandidateMarket) -> dict[str, Any]:
+    market = candidate.market
+    raw = market.raw
+    normalization = candidate.normalization.as_dict()
+    return {
+        "ticker": market.ticker,
+        "title": market.title,
+        "event_title": first_text_from_market(raw, ("event_title", "event_name", "event")),
+        "event_name": first_text_from_market(raw, ("event_name", "event_title", "event")),
+        "event_ticker": sprint1.text_or_none(raw.get("event_ticker")),
+        "series_ticker": market.series_ticker,
+        "source_family": market.source_family,
+        "source_category": normalization["source_category"],
+        "normalized_category": normalization["normalized_category"],
+        "semantic_category": normalization["semantic_category"],
+        "confidence": normalization["confidence"],
+        "matched_rules": normalization["matched_rules"],
+        "warnings": normalization["warnings"],
+        "reason": normalization["reason"],
+        "settlement_ts": market.settlement_ts,
+        "result": market.result,
+        "volume": market.volume,
+        "diagnostics_only": True,
+        "not_imported_as_historical_rows": True,
+    }
+
+
+def first_text_from_market(raw: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+    metadata = raw.get("metadata")
+    metadata_dict = metadata if isinstance(metadata, dict) else {}
+    for key in keys:
+        value = sprint1.text_or_none(raw.get(key))
+        if value:
+            return value
+        value = sprint1.text_or_none(metadata_dict.get(key))
+        if value:
+            return value
+    return None
+
+
 def build_manifest(
     *,
     export_id: str,
@@ -674,6 +790,9 @@ def build_manifest(
     max_candle_market_attempts: int,
     availability_limitations: tuple[dict[str, Any], ...],
     non_quota_category_counts: dict[str, int],
+    unselected_candidate_cap: int,
+    unselected_candidate_count: int,
+    unselected_available_counts: dict[str, int],
     target_status_value: str,
 ) -> dict[str, Any]:
     now = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -711,6 +830,12 @@ def build_manifest(
             "markets.jsonl": sprint1.file_sha256(export_dir / "markets.jsonl"),
             "candlesticks.jsonl": sprint1.file_sha256(export_dir / "candlesticks.jsonl"),
             "evidence.jsonl": sprint1.file_sha256(export_dir / "evidence.jsonl"),
+            "unselected_candidates.jsonl": sprint1.file_sha256(
+                export_dir / "unselected_candidates.jsonl"
+            ),
+            "unselected_candidates_summary.md": sprint1.file_sha256(
+                export_dir / "unselected_candidates_summary.md"
+            ),
         },
         "notes": notes,
         "collection_script": "scripts/local_only/collect_kalshi_normalized_calibration.py",
@@ -728,6 +853,15 @@ def build_manifest(
             "max_candle_market_attempts": max_candle_market_attempts,
             "category_counts": dict(Counter(item.category for item in selected)),
             "non_quota_category_counts": non_quota_category_counts,
+            "unselected_candidate_diagnostics": {
+                "examples_path": "unselected_candidates.jsonl",
+                "summary_path": "unselected_candidates_summary.md",
+                "cap_per_category": unselected_candidate_cap,
+                "retained_example_count": unselected_candidate_count,
+                "available_unselected_category_counts": unselected_available_counts,
+                "diagnostics_only": True,
+                "not_imported_as_historical_rows": True,
+            },
             "availability_limitations": list(availability_limitations),
             "target_status": target_status_value,
             "unrelated_category_backfill": False,
@@ -789,6 +923,8 @@ def render_diagnostics_markdown(*, export_id: str, diagnostics: dict[str, Any]) 
             f"- pre_filter_category_counts: `{diagnostics['pre_filter_category_counts']}`",
             f"- post_filter_category_counts: `{diagnostics['post_filter_category_counts']}`",
             f"- selected_category_counts: `{diagnostics['selected_category_counts']}`",
+            f"- selected_row_counts: `{diagnostics.get('selected_row_counts', {})}`",
+            f"- per_category: `{diagnostics.get('per_category', {})}`",
             "",
             "## Quotas",
             "",
@@ -826,6 +962,8 @@ def render_export_report(
     availability_limitations: tuple[dict[str, Any], ...],
     target_status_value: str,
     diagnostics: dict[str, Any],
+    unselected_candidate_count: int,
+    unselected_candidate_cap: int,
 ) -> str:
     category_counts = dict(Counter(item.category for item in selected))
     category_lines = [f"- `{name}`: {count}" for name, count in sorted(category_counts.items())]
@@ -867,6 +1005,11 @@ def render_export_report(
             f"- candle_failure_count: {diagnostics['candle_failure_count']}",
             f"- quota_shortfalls: `{diagnostics['quota_shortfalls']}`",
             f"- candle_failure_reasons: `{diagnostics['candle_failure_reasons']}`",
+            f"- per_category: `{diagnostics.get('per_category', {})}`",
+            (
+                "- unselected_candidate_examples: "
+                f"{unselected_candidate_count} retained, cap={unselected_candidate_cap} per category"
+            ),
             "",
             "## Availability Limitations",
             "",
@@ -882,6 +1025,52 @@ def render_export_report(
             "",
         ]
     )
+
+
+def render_unselected_candidates_summary(
+    *,
+    export_id: str,
+    cap_per_category: int,
+    available_counts: dict[str, int],
+    examples: list[dict[str, Any]],
+) -> str:
+    retained_counts = Counter(str(example["normalized_category"]) for example in examples)
+    lines = [
+        "# Normalized Calibration Unselected Candidate Diagnostics",
+        "",
+        f"Export id: `{export_id}`",
+        "",
+        "Scope: diagnostics-only bounded examples from normalized candidate discovery. "
+        "These rows are not imported as historical rows and are not evidence.",
+        "",
+        f"- Cap per normalized category: {cap_per_category}",
+        f"- Retained example count: {len(examples)}",
+        "",
+        "## Available Unselected Counts",
+        "",
+    ]
+    lines.extend(
+        f"- `{category}`: {count}"
+        for category, count in sorted(available_counts.items())
+    )
+    if not available_counts:
+        lines.append("- none")
+    lines.extend(["", "## Retained Example Counts", ""])
+    lines.extend(
+        f"- `{category}`: {count}"
+        for category, count in sorted(retained_counts.items())
+    )
+    if not retained_counts:
+        lines.append("- none")
+    lines.extend(["", "## Sample Examples", ""])
+    for example in examples[:20]:
+        lines.append(
+            f"- `{example['ticker']}` ({example['normalized_category']}): {example['title']}"
+        )
+    if not examples:
+        lines.append("- none")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def quotas_met(selected_counts: Counter[str], quotas: dict[str, int]) -> bool:

@@ -220,10 +220,83 @@ def test_collector_diagnostics_aggregate_counts_failures_and_shortfalls(tmp_path
     assert diagnostics["candle_success_count"] == 1
     assert diagnostics["candle_failure_count"] == 1
     assert diagnostics["candle_failure_reasons"]["no_candles_returned"] == 1
+    assert diagnostics["per_category"]["sports_tennis"]["candle_attempt_count"] == 1
+    assert diagnostics["per_category"]["sports_tennis"]["candle_success_count"] == 1
+    assert diagnostics["per_category"]["sports_tennis"]["selected_market_count"] == 1
+    assert diagnostics["per_category"]["sports_tennis"]["selected_row_count"] == 2
+    assert diagnostics["per_category"]["weather"]["candle_attempt_count"] == 1
+    assert diagnostics["per_category"]["weather"]["candle_failure_count"] == 1
+    assert diagnostics["per_category"]["weather"]["candle_failure_reasons"] == {
+        "no_candles_returned": 1
+    }
+    assert diagnostics["per_category_candle_attempt_counts"] == {
+        "sports_tennis": 1,
+        "weather": 1,
+    }
+    assert diagnostics["per_category_candle_failure_reasons"] == {
+        "weather": {"no_candles_returned": 1}
+    }
     assert diagnostics["quota_shortfalls"] == {
         "public_event_generic": 1,
         "weather": 1,
     }
+
+
+def test_unselected_candidate_examples_are_capped_and_not_imported(tmp_path: Path):
+    collector = load_collector_module()
+    weather_markets = [
+        market(
+            f"KXRAIN-{index:02d}",
+            f"Will New York City receive rain on day {index}?",
+            source_category="weather",
+        )
+        for index in range(30)
+    ]
+    client = FakeKalshiClient(
+        markets=[
+            market(
+                "KXWTAMATCH-1",
+                "Will Donna Vekic win the professional tennis match?",
+                source_category="public_event",
+            ),
+            *weather_markets,
+        ],
+    )
+
+    result = collector.collect_normalized_calibration(
+        client=client,
+        export_id="normalized_unselected",
+        output_root=tmp_path / "exports",
+        historical_output_dir=tmp_path / "historical",
+        report_dir=tmp_path / "reports",
+        target_markets=1,
+        rows_per_market=2,
+        quotas={"sports_tennis": 1},
+        max_candle_market_attempts=5,
+        period_interval=60,
+        unselected_candidate_cap=25,
+        dry_run=False,
+    )
+
+    unselected_path = result.export_dir / "unselected_candidates.jsonl"
+    summary_path = result.export_dir / "unselected_candidates_summary.md"
+    assert unselected_path.exists()
+    assert summary_path.exists()
+    unselected = read_jsonl(unselected_path)
+    weather_unselected = [
+        row for row in unselected if row["normalized_category"] == "weather"
+    ]
+    assert len(weather_unselected) == 25
+    assert all(row["diagnostics_only"] is True for row in weather_unselected)
+    assert all(
+        row["not_imported_as_historical_rows"] is True
+        for row in weather_unselected
+    )
+    assert result.historical_jsonl is not None
+    historical_rows = read_jsonl(result.historical_jsonl)
+    assert historical_rows
+    assert {row["market_id"] for row in historical_rows} == {"KXWTAMATCH-1"}
+    assert all("KXRAIN" not in row["market_id"] for row in historical_rows)
 
 
 def test_output_rows_are_calibration_only_shape(tmp_path: Path):
