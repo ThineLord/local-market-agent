@@ -1,5 +1,17 @@
 # Implementation Log
 
+## 2026-10-14 — Local dashboard redesign
+
+- Replaced the default dashboard experience with a local single-page interface at `http://127.0.0.1:8502`, served by `python ui/server.py`. The original Streamlit interface remains available.
+- Visual direction: warm ivory, ink green and champagne linework; fixed upper-left Local Market Agent wordmark; a minimal overview with three metrics and one market observation; grouped navigation and responsive layouts.
+- Created an original procedural 3D charging-bull architectural wireframe with a plinth. The locally rendered Canvas scene transitions its perspective between pages, tabs and record drawers, renders at a bounded cadence, suspends while hidden, supports a persistent pause control, and honors reduced motion. No remote model, font, texture or render dependency is used.
+- Preserved all nine original sections, full research evidence and counter-evidence, complete record JSON, the four-stage audit chain, all six Phase 7 operations categories, and allowlisted settings. Added search, status/source filters, ascending/descending column sorting, pagination, filtered CSV export, record JSON download/copy, mobile navigation and keyboard-accessible detail dialogs.
+- Added a read-only SQLite adapter and loopback-only GET API. Existing databases are never initialized or migrated by this dashboard; absent/older databases are handled safely. Static assets are allowlisted; private paths, foreign hosts/origins and write requests are rejected. CSV exports neutralize spreadsheet formula prefixes. Existing trading policy defaults and execution logic are unchanged.
+- Files: `ui/server.py`, `ui/web/index.html`, `ui/web/style.css`, `ui/web/app.js`, `ui/web/bull.js`, `ui/web/favicon.svg`, `tests/test_dashboard.py`, `README.md`, and this log.
+- Validation: `ruff check .` passed; full `pytest -q` passed with **312 passed / 1 skipped** (the optional network test). The focused dashboard and original UI tests passed with **19 passed**. Both JavaScript modules passed `node --check`.
+- Browser verification: all nine original sections rendered; research counterpoints/notes and complete audit stages opened; all six operations tabs and ledger positions matched saved counts; history search and detail drawer worked; exported CSV was read back and verified to contain all four history records. At 390px width, document width equaled viewport width and tables scrolled within their own container. No browser console errors were observed.
+- Local environment: the repository's iCloud-managed `.venv` had offloaded dependencies. Preview and validation used `/tmp/lma-dashboard-venv` with a separate bytecode cache. This is a local preview, not a deployment. Record limits remain explicit (500 per main category; existing operations limits 25/100). The bull is a custom procedural interpretation, not an exact scan of the Wall Street statue.
+
 ## Batch 0 - Preflight and repo hygiene
 
 - Status: completed.

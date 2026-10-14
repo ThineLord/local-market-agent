@@ -91,6 +91,35 @@ claims are marked meaningful only when settlement/outcome data is present.
 
 ## Dashboard
 
+Launch the redesigned local dashboard from the repository root with your Python
+environment activated:
+
+```bash
+python ui/server.py
+```
+
+Open **http://127.0.0.1:8502** in Chrome. Use `--port 8503` to choose another
+local port. The server binds to loopback only and opens the SQLite database in
+read-only mode. Missing databases show an explicitly labeled fixture preview.
+
+The interface includes a quiet overview, all nine original dashboard sections,
+searchable, filterable and sortable record tables, CSV export, complete record drawers,
+research evidence/counterpoints, and the linked audit trail. Phase 7 operations
+are grouped into runs, portfolio, positions, orders, fills, and risk gates.
+The original procedural 3D bull is rendered locally with Canvas; there are no
+remote assets or frontend build dependencies. Page and detail transitions move
+the scene smoothly. Background motion can be paused and respects the system's
+reduced-motion setting. Narrow screens use a collapsible navigation and
+independently scrolling tables.
+
+The API loads up to 500 records per main category and reports total counts.
+The existing Phase 7 view retains its limits of 25 runs / 100 execution records.
+All displayed prices and timestamps are saved observations, not a live feed.
+Settings are read-only and explicitly allowlisted; there are no order or
+approval endpoints. Refresh rereads local data, without running a collection.
+
+The original Streamlit interface remains available:
+
 ```bash
 streamlit run ui/app.py
 ```

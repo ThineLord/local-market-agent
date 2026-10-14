@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f5f0">
+  <meta name="description" content="A considered view of your local market research and paper portfolio.">
+  <title>Local Market Agent</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <canvas id="bull-scene" aria-hidden="true"></canvas>
+  <div class="scene-wash" aria-hidden="true"></div>
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="#overview"><span class="brand-mark" aria-hidden="true">↗</span><span>Local Market Agent</span></a>
+    <div class="workspace-label"><span class="status-dot"></span> PERSONAL WORKSPACE</div>
+    <nav id="navigation" aria-label="Main navigation"></nav>
+    <div class="sidebar-bottom">
+      <a class="nav-item" href="#settings" data-page="settings"><span data-icon="settings"></span><span>Settings</span></a>
+      <div class="mode-card"><span class="mode-symbol">P</span><div><strong>Paper workspace</strong><small>Local data. Considered decisions.</small></div><span class="status-dot"></span></div>
+    </div>
+  </aside>
+  <div class="mobile-shade" id="mobile-shade"></div>
+  <div class="shell">
+    <header class="topbar">
+      <div class="breadcrumb"><button class="icon-button mobile-menu" id="menu-toggle" aria-label="Open navigation" aria-expanded="false" aria-controls="sidebar"></button><a class="mobile-brand" href="#overview">Local Market Agent</a><span class="crumb-root">Workspace</span><span class="crumb-slash">/</span><span id="breadcrumb-current">Overview</span></div>
+      <div class="top-actions"><span id="connection-status" class="connection"><span class="status-dot"></span>Local workspace</span><button class="icon-button" id="motion-toggle" aria-label="Pause background motion" title="Pause background motion"></button><button class="icon-button" id="refresh" aria-label="Refresh local data" title="Refresh local data"></button><span class="avatar" aria-label="Personal workspace">L</span></div>
+    </header>
+    <main id="main" tabindex="-1"><div class="loading-state"><span class="eyebrow">LOCAL MARKET AGENT</span><h1>Opening your workspace<span class="loading-dot">.</span></h1></div></main>
+    <footer class="footer"><span><span class="status-dot"></span> PAPER TRADING ONLY</span><span id="footer-status">Reading local records</span><span class="footer-edition">THE WALL STREET STUDY <i>№ 01</i></span></footer>
+  </div>
+  <dialog id="detail-dialog" aria-labelledby="detail-title"><div class="drawer-top"><span class="eyebrow">RECORD DETAIL</span><button class="icon-button" id="close-detail" aria-label="Close detail"></button></div><div id="detail-content"></div></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
