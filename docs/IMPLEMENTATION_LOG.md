@@ -762,3 +762,11 @@
 - Family guidance result: added pre-screen guidance for Fed/FOMC/rate decisions, CPI/inflation, unemployment/jobs/nonfarm payrolls, official-only weather, major sports, and conditional crypto benchmark markets.
 - Procedure result: documented the manual flow to inspect 8 to 12 candidates, fill the shortlist, reject ambiguous timestamps, select 5 to 10 survivors, and only then stage a future local export manually.
 - Safety audit result: ACCEPT-2 did not collect data, approve evidence, build an acceptance dataset, implement a collector, scrape sources, automate a browser, mutate source terms, modify strategy logic, modify acceptance gates, start Phase 8, add broker/live/order/account/portfolio/fill paths, add scheduler/daemon/autostart behavior, or make profitability, paper-PnL, Strategy v2 superiority, acceptance-ready, or live-readiness claims.
+
+
+## CI Fix - Dashboard Test Import Path (2026-10-15)
+
+- Fixed plain `pytest` collection by adding `pythonpath = ["."]` to `[tool.pytest.ini_options]` in `pyproject.toml`, so tests can import the repository-level `ui.server` alongside the installed `src` package.
+- Reproduced the original failure in a fresh clone and new Python 3.13.15 virtual environment after `pip install -e ".[dev]"`: `env -u PYTHONPATH <venv>/bin/pytest --collect-only -q` collected 297 tests and failed with `ModuleNotFoundError: No module named 'ui'`.
+- With the fix, the same environment running plain `env -u PYTHONPATH <venv>/bin/pytest` collected 313 tests and finished with `312 passed, 1 skipped`. `ruff check .` and `git diff --check` also passed. GitHub CI continues to validate Python 3.11.
+- Scope: pytest configuration and this validation log only; paper-trading defaults and dashboard runtime behavior are unchanged.

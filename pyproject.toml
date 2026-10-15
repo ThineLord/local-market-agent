@@ -31,6 +31,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = [
   "network: optional tests that call public read-only network APIs",
 ]
