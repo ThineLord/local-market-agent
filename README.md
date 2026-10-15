@@ -91,6 +91,33 @@ claims are marked meaningful only when settlement/outcome data is present.
 
 ## Dashboard
 
+### Watchlist screening
+
+Screen up to 50 markets in one local report, with independent results for every
+entry. The deterministic demo includes a research candidate, an unresearched
+market, a wide spread, a missing ask, and a stale snapshot:
+
+```bash
+lma watchlist-screen --as-of 2026-06-05T00:02:00Z
+python ui/server.py
+```
+
+Open **http://127.0.0.1:8502/#watchlist/screening** to search, filter, inspect
+checks and input hashes, or export CSV. Reports are saved under
+`data/reports/watchlist/screen-<id>/report.json` and `report.md`; an atomic
+`latest.json` copy feeds the dashboard. Each previous run is retained.
+
+The demo is synthetic and the explicit review time is historical. Omit `--as-of`
+for a current check; old fixtures will correctly be marked stale. Screening
+does not use an LLM, open the trading database, approve evidence, or create
+orders. A research candidate still requires portfolio risk review and human
+approval through the existing paper workflow.
+
+See [Watchlist screening](docs/WATCHLIST_SCREENING.md) for the input format,
+optional public Kalshi/Polymarket snapshots, decision rules, and limitations.
+
+### Local interface
+
 Launch the redesigned local dashboard from the repository root with your Python
 environment activated:
 

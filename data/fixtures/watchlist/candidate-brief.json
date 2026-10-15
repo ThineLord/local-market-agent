@@ -1,0 +1,67 @@
+{
+  "brief_id": "brief_7bc6d6294bffe9384751dd7b2d8f4c07",
+  "market_id": "demo-candidate",
+  "snapshot_id": "snapshot-demo-candidate",
+  "created_at": "2026-06-05T00:01:00Z",
+  "thesis": "Fixture: turnout research candidate: paper buy yes",
+  "rationale": "Estimated probability 0.6083; market probability 0.49; evidence quality 0.6564.",
+  "evidence": [
+    {
+      "evidence_id": "evidence-registration-up",
+      "source": "fixture-civic-board",
+      "title": "New voter registrations are above the prior cycle",
+      "url": "https://example.test/news/registration-up",
+      "published_at": "2026-05-30T12:00:00Z",
+      "retrieved_at": "2026-06-05T00:01:00Z",
+      "summary": "Registration counts are 7 percent higher than the comparable point in the previous cycle.",
+      "relevance_score": 0.86,
+      "credibility_score": 0.82,
+      "metadata": {
+        "probability_hint": 0.68
+      }
+    },
+    {
+      "evidence_id": "evidence-early-interest",
+      "source": "fixture-pollster",
+      "title": "Survey interest is modestly above baseline",
+      "url": "https://example.test/news/interest-up",
+      "published_at": "2026-06-02T15:30:00Z",
+      "retrieved_at": "2026-06-05T00:01:00Z",
+      "summary": "A nonpartisan survey reports above-baseline intent to vote among likely voters.",
+      "relevance_score": 0.82,
+      "credibility_score": 0.8,
+      "metadata": {
+        "probability_hint": 0.65
+      }
+    }
+  ],
+  "counter_evidence": [
+    {
+      "evidence_id": "evidence-weather-risk",
+      "source": "fixture-weather-service",
+      "title": "Early forecast suggests moderate rain risk",
+      "url": "https://example.test/news/weather-risk",
+      "published_at": "2026-06-01T09:00:00Z",
+      "retrieved_at": "2026-06-05T00:01:00Z",
+      "summary": "Historical turnout drops slightly when election-day rainfall is above normal.",
+      "relevance_score": 0.76,
+      "credibility_score": 0.8,
+      "metadata": {
+        "counter": true,
+        "probability_hint": 0.48
+      }
+    }
+  ],
+  "uncertainty_notes": [
+    "Synthetic demonstration only. The example resolution source is fictional and grants no evidence approval.",
+    "Live trading is disabled; output is paper-only."
+  ],
+  "confidence": 0.7438,
+  "evidence_quality": 0.6564,
+  "estimated_probability": 0.6083,
+  "market_implied_probability": 0.49,
+  "recommended_action": "paper_buy_yes",
+  "must_not_trade_reasons": [],
+  "resolution_source": "https://example.test/fixture/civic-board-resolution",
+  "resolution_ambiguity": false
+}

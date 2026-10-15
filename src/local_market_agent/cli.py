@@ -47,6 +47,7 @@ from local_market_agent.operations import (
     Phase7SandboxRunner,
 )
 from local_market_agent.operations.phase7_market_data import phase7_market_data_audit
+from local_market_agent.operations.watchlist import screen_watchlist, write_screen_report
 from local_market_agent.paper import PaperLedger
 from local_market_agent.reporting import DailyReportService
 from local_market_agent.risk import RiskEngine
@@ -55,6 +56,41 @@ from local_market_agent.storage import SQLiteRepository
 from local_market_agent.strategy import PredictionMarketEdgeStrategy
 
 app = typer.Typer(help="Local Market Agent: offline-first research and paper trading.")
+
+
+@app.command()
+def watchlist_screen(
+    watchlist: Annotated[Path, typer.Option(help="Watchlist JSON; file paths are relative to it.")] = Path(
+        "data/fixtures/watchlist/demo.json"
+    ),
+    output_dir: Annotated[Path, typer.Option(help="Saved reports and latest dashboard report.")] = Path(
+        "data/reports/watchlist"
+    ),
+    as_of: Annotated[str | None, typer.Option(help="Timezone-aware review time, for file inputs only.")] = None,
+    allow_network: Annotated[bool, typer.Option(help="Allow public read-only snapshot requests.")] = False,
+) -> None:
+    """Screen a bounded market watchlist without creating orders or touching the database."""
+    try:
+        review_time = datetime.fromisoformat(as_of.replace("Z", "+00:00")) if as_of else None
+        report = screen_watchlist(
+            watchlist, settings=load_settings(), as_of=review_time, allow_network=allow_network,
+        )
+    except (OSError, ValueError, TypeError):
+        raise typer.BadParameter(
+            "Invalid watchlist or review time. Check the JSON schema, unique entries, file path, "
+            "and explicit timezone. --as-of supports file sources only."
+        ) from None
+    try:
+        report_path = write_screen_report(report, output_dir)
+    except OSError:
+        raise typer.BadParameter("Unable to write the screening report to output-dir.") from None
+    typer.echo(json.dumps({
+        "report_path": str(report_path), "markdown_path": str(report_path.with_suffix(".md")),
+        "counts": report.counts, "markets": len(report.rows), "orders_created": 0,
+        "execution_authorized": False,
+    }, sort_keys=True))
+    if report.counts.get("error", 0):
+        raise typer.Exit(code=1)
 
 
 def _settings(

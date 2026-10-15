@@ -1,0 +1,31 @@
+{
+  "name": "Deterministic screening demo (synthetic fixtures)",
+  "entries": [
+    {
+      "source": "file",
+      "market_id": "demo-candidate",
+      "snapshot_file": "candidate.json",
+      "brief_file": "candidate-brief.json"
+    },
+    {
+      "source": "file",
+      "market_id": "demo-unresearched",
+      "snapshot_file": "unresearched.json"
+    },
+    {
+      "source": "file",
+      "market_id": "demo-wide-spread",
+      "snapshot_file": "wide-spread.json"
+    },
+    {
+      "source": "file",
+      "market_id": "demo-missing-quote",
+      "snapshot_file": "missing-quote.json"
+    },
+    {
+      "source": "file",
+      "market_id": "demo-stale",
+      "snapshot_file": "stale.json"
+    }
+  ]
+}

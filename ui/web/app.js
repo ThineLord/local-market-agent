@@ -83,13 +83,26 @@ function overview(){
   <p class="overview-note">${data.meta.fixture_preview?'Preview from the deterministic fixture. No market snapshots have been saved.':'Showing saved observations. Fixture records are demonstrations; prices are not a live feed.'}</p>`;
 }
 function watchlist(){
-  const tab=state.tab==='history'?'history':'markets';
+  const tab=['history','screening'].includes(state.tab)?state.tab:'markets';
+  const navigation=tabs([['markets','Latest by market'],['history','Snapshot history'],['screening','Screening']],tab);
+  if(tab==='screening')return screening(navigation);
   const rows=(tab==='history'?data.snapshots:latestMarkets()).map(s=>({...s,market_id:s.market.market_id,platform:s.market.platform,status:s.market.status}));
   return heading('RESEARCH / 01','Watchlist','A clear view of your markets. Open a record to inspect its complete snapshot.',`${latestMarkets().length} market${latestMarkets().length===1?'':'s'}`)+
     (data.meta.fixture_preview?'<div class="notice">Fixture preview · No saved market snapshots. This example is not a live quote.</div>':'')+
-    tabs([['markets','Latest by market'],['history','Snapshot history']],tab)+toolbar('Search markets…',[...new Set(rows.map(r=>r.platform))])+
+    navigation+toolbar('Search markets…',[...new Set(rows.map(r=>r.platform))])+
     table(rows,[marketColumn,{label:'Source',render:r=>badge(r.platform,r.platform==='fixture'?'gold':'')},{label:'Probability',class:'num',render:r=>pct(r.market_implied_probability)},{label:'Bid / Ask',class:'num',render:r=>`${n(r.best_bid,3)} / ${n(r.best_ask,3)}`},{label:'Spread',class:'num',sortValue:r=>r.best_ask!=null&&r.best_bid!=null?r.best_ask-r.best_bid:null,render:r=>pct(r.best_ask!=null&&r.best_bid!=null?r.best_ask-r.best_bid:null)},timeColumn('as_of')],{title:tab==='history'?'Saved observations':'Market observations',subtitle:'Saved data · not a live feed',filterKey:'platform'})+
     '<p class="note">The latest view groups snapshots by market. Snapshot history retains every loaded observation.</p>';
+}
+function screening(navigation){
+  const saved=data.screening||{status:'missing'},report=saved.report;
+  const intro=heading('RESEARCH / 01','Watchlist','Screen your saved watchlist and inspect the reasons behind every result.')+navigation;
+  if(!report)return intro+empty(saved.status==='invalid'?'Screening report unavailable':'No screening report yet',saved.status==='invalid'?'The saved report could not be validated. Generate a new report to continue.':'Run a local watchlist screen, then refresh to inspect the saved results.','lma watchlist-screen --as-of 2026-06-05T00:02:00Z');
+  const rows=report.rows,counts=report.counts;
+  return intro+`<div class="notice">${report.historical_review?'Historical review · ':'Saved screen · '}${esc(datetime(report.as_of))}. Research triage only. No orders or execution approvals.</div>`+
+    `<div class="stat-grid">${metric('Markets screened',rows.length,report.name)}${metric('Research candidates',counts.research_candidate||0,'Require risk review and human approval')}${metric('Needs research',counts.needs_research||0,'No matching brief supplied')}${metric('Blocked / errors',(counts.blocked||0)+(counts.error||0),'Inspect failed checks')}</div>`+
+    toolbar('Search markets or screening checks…',[...new Set(rows.map(r=>r.status))])+
+    table(rows,[{label:'Market',key:'title',class:'title-cell',render:r=>`${esc(r.title||r.market_id)}<span class="cell-subtitle mono">${esc(r.market_id)}</span>`},{label:'Source',key:'source'},{label:'Status',key:'status',render:r=>status(r.status)},{label:'Bid / Ask',sortValue:r=>r.snapshot?.best_bid,render:r=>`${n(r.snapshot?.best_bid,3)} / ${n(r.snapshot?.best_ask,3)}`},{label:'Edge',key:'edge',render:r=>pct(r.edge)},{label:'Reason',class:'title-cell',sortValue:r=>r.strategy_reason||r.checks.filter(c=>!c.passed).map(c=>c.code).join(' '),render:r=>esc(r.checks.filter(c=>!c.passed).map(c=>c.message).join(' · ')||r.strategy_reason||'Review required')},timeColumn('checked_at')],{title:'Screening results',filterKey:'status',subtitle:'Open a row for all checks and source hashes'})+
+    `<p class="note">${report.limitations.map(esc).join(' ')}</p>`;
 }
 function briefs(){
   if(!data.briefs.length)return heading('RESEARCH / 02','Market Brief','Research, evidence and the reasoning behind every signal.')+empty('A place for your research','Generate a local brief to explore its thesis, supporting evidence and uncertainties.','lma generate-brief --fixture data/fixtures/demo_market.json');
@@ -157,7 +170,7 @@ function settingsPage(){
 function listHtml(values){return values?.length?`<ul>${values.map(v=>`<li>${esc(typeof v==='object'?JSON.stringify(v):v)}</li>`).join('')}</ul>`:'<p class="muted">None recorded.</p>';}
 function definitionList(record,primitivesOnly=false){return `<dl class="definition-list">${Object.entries(record).filter(([k,v])=>!k.startsWith('_')&&(!primitivesOnly||v===null||typeof v!=='object')).map(([k,v])=>`<div class="definition-row"><dt>${esc(human(k))}</dt><dd>${typeof v==='boolean'?badge(v?'Enabled':'Disabled',v?'':'neutral'):esc(v===null?'Not recorded':typeof v==='object'?JSON.stringify(v):v)}</dd></div>`).join('')}</dl>`;}
 function rawHtml(record){return `<details class="raw-data"><summary>Inspect full JSON record</summary><pre>${esc(JSON.stringify(record,null,2))}</pre></details>`;}
-function recordHtml(record){return definitionList(record,true)+Object.entries(record).filter(([k,v])=>!k.startsWith('_')&&v&&typeof v==='object').map(([k,v])=>`<section class="detail-section"><h3>${esc(human(k))}</h3>${Array.isArray(v)?(v.every(x=>typeof x!=='object')?listHtml(v):v.map(x=>`<details class="raw-data"><summary>${esc(x.title||x.evidence_id||'Nested record')}</summary><pre>${esc(JSON.stringify(x,null,2))}</pre></details>`).join('')):definitionList(v)}</section>`).join('');}
+function recordHtml(record){return definitionList(record,true)+Object.entries(record).filter(([k,v])=>!k.startsWith('_')&&v&&typeof v==='object').map(([k,v])=>`<section class="detail-section"><h3>${esc(human(k))}</h3>${Array.isArray(v)?(v.every(x=>typeof x!=='object')?listHtml(v):v.map(x=>`<details class="raw-data"><summary>${esc(x.title||x.evidence_id||(x.code?`${x.passed?'PASS':'CHECK'} · ${human(x.code)}`:'Nested record'))}</summary><pre>${esc(JSON.stringify(x,null,2))}</pre></details>`).join('')):definitionList(v)}</section>`).join('');}
 function showDetail(index){
   currentDetail=details[index];if(!currentDetail)return;
   const {record,title,type}=currentDetail;

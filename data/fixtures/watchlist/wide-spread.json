@@ -1,0 +1,25 @@
+{
+  "market": {
+    "market_id": "demo-wide-spread",
+    "title": "Fixture: expensive wide spread",
+    "platform": "fixture",
+    "market_type": "prediction",
+    "status": "open",
+    "close_time": "2026-11-03T23:59:00Z",
+    "url": "https://example.test/markets/demo-election-turnout-2026",
+    "outcomes": [
+      "yes",
+      "no"
+    ]
+  },
+  "snapshot": {
+    "snapshot_id": "snapshot-demo-wide-spread",
+    "as_of": "2026-06-05T00:00:00Z",
+    "best_bid": 0.35,
+    "best_ask": 0.65,
+    "last_price": 0.49,
+    "market_implied_probability": 0.49,
+    "volume": 12500.0,
+    "liquidity": 4000.0
+  }
+}

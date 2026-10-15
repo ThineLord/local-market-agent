@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from local_market_agent.adapters import FixtureAdapter  # noqa: E402
 from local_market_agent.config import load_settings  # noqa: E402
+from local_market_agent.operations.watchlist import ScreenReport  # noqa: E402
 from local_market_agent.storage import SQLiteRepository  # noqa: E402
 from ui.app import _audit_chain_rows, _phase7_operations_view_model  # noqa: E402
 
@@ -59,7 +60,7 @@ def encode(value):
     raise TypeError(f"Unsupported dashboard value: {type(value).__name__}")
 
 
-def dashboard_payload(settings=None) -> dict:
+def dashboard_payload(settings=None, screen_report_path=None) -> dict:
     settings = settings or load_settings()
     repository = DashboardRepository(settings.db_path)
     snapshots = repository.list_market_snapshots(limit=LIMIT)
@@ -87,6 +88,7 @@ def dashboard_payload(settings=None) -> dict:
         **collections,
         "audit": _audit_chain_rows(repository),
         "operations": _phase7_operations_view_model(repository),
+        "screening": screening_payload(screen_report_path),
         "meta": {
             "loaded_at": datetime.now(UTC).isoformat(),
             "database_available": repository.db_path.exists(),
@@ -107,6 +109,20 @@ def dashboard_payload(settings=None) -> dict:
             "risk_gates": settings.risk_gates.as_dict(),
         },
     }
+
+
+def screening_payload(path=None) -> dict:
+    path = Path(path) if path is not None else ROOT / "data/reports/watchlist/latest.json"
+    if not path.exists():
+        return {"status": "missing", "report": None}
+    try:
+        if path.stat().st_size > 5_000_000:
+            raise ValueError("Report too large")
+        report = ScreenReport.model_validate_json(path.read_bytes())
+        json.dumps(report.model_dump(mode="json"), allow_nan=False)
+        return {"status": "available", "report": report.model_dump(mode="json")}
+    except (OSError, ValueError):
+        return {"status": "invalid", "report": None}
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
@@ -137,7 +153,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         route = urlsplit(self.path).path
         if route == "/api/dashboard":
             try:
-                body = json.dumps(dashboard_payload(), default=encode, allow_nan=False).encode()
+                body = json.dumps(dashboard_payload(
+                    screen_report_path=getattr(self.server, "screen_report_path", None),
+                ), default=encode, allow_nan=False).encode()
                 self.reply(200, body)
             except Exception:
                 logging.exception("Dashboard data read failed")
@@ -154,8 +172,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser(description="Local Market Agent read-only dashboard")
     parser.add_argument("--port", type=int, default=8502)
+    parser.add_argument("--screen-report", type=Path, help="Saved watchlist screening JSON")
     args = parser.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), DashboardHandler)
+    server.screen_report_path = args.screen_report
     print(f"Local Market Agent: http://127.0.0.1:{server.server_port}", flush=True)
     try:
         server.serve_forever()
