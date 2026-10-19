@@ -64,7 +64,7 @@ def dashboard_http():
     thread.join(timeout=2)
 
 
-@pytest.mark.parametrize("path", ["/", "/app.js", "/bull.js", "/style.css", "/favicon.svg", "/api/health"])
+@pytest.mark.parametrize("path", ["/", "/app.js", "/bull.js", "/theme.js", "/style.css", "/favicon.svg", "/api/health"])
 def test_local_static_routes_and_security_headers(dashboard_http, path):
     connection = HTTPConnection("127.0.0.1", dashboard_http)
     connection.request("GET", path)

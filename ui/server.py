@@ -26,7 +26,8 @@ from ui.app import _audit_chain_rows, _phase7_operations_view_model  # noqa: E40
 STATIC = Path(__file__).parent / "web"
 LIMIT = 500
 ASSETS = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js",
-          "/style.css": "style.css", "/bull.js": "bull.js", "/favicon.svg": "favicon.svg"}
+          "/style.css": "style.css", "/bull.js": "bull.js", "/theme.js": "theme.js",
+          "/favicon.svg": "favicon.svg"}
 
 
 class DashboardRepository(SQLiteRepository):

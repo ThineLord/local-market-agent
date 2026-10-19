@@ -3,6 +3,9 @@ import {createBullScene} from './bull.js';
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icons={
+  light:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/>',
+  dark:'<path d="M20.5 14.3A9 9 0 0 1 9.7 3.5a9 9 0 1 0 10.8 10.8Z"/>',
+  system:'<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/>',
   overview:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   watchlist:'<path d="M3 16 8 11l4 3 8-9M15 5h5v5"/>',
   briefs:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/>',
@@ -30,6 +33,8 @@ let data=null,activeTable=null,details=[],currentDetail=null,routeTimer=0,toastT
 let motionPaused=false;
 try{motionPaused=localStorage.getItem('lma-motion-paused')==='true';}catch{}
 setMotion(motionPaused);
+syncAppearance();
+window.addEventListener('lma-theme-change',syncAppearance);
 const human=s=>String(s??'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 const n=(v,d=2)=>v==null?'—':Number(v).toLocaleString('en-US',{maximumFractionDigits:d});
 const money=v=>v==null?'—':Number(v).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2});
@@ -137,7 +142,7 @@ function chart(snapshots){
   const vals=pts.map(s=>s.portfolio_value),lo=Math.min(...vals),hi=Math.max(...vals),span=hi-lo||Math.max(1,hi*.01),min=lo-span*.2,max=hi+span*.2;
   const times=pts.map(s=>+new Date(s.as_of)),t0=times[0],tspan=times.at(-1)-t0||1;
   const xy=pts.map((s,i)=>[65+(times[i]-t0)/tspan*805,145-(s.portfolio_value-min)/(max-min)*110]);
-  return `<svg class="chart" viewBox="0 0 900 180" role="img" aria-label="Recorded paper portfolio values, ${esc(date(pts[0].as_of))} to ${esc(date(pts.at(-1).as_of))}">${[0,1,2].map(i=>`<line x1="65" x2="870" y1="${35+i*55}" y2="${35+i*55}" stroke="#dfe7d4" stroke-dasharray="3 5"/><text x="0" y="${39+i*55}">${esc(money(max-i*(max-min)/2))}</text>`).join('')}<polyline points="${xy.map(p=>p.join(',')).join(' ')}" fill="none" stroke="#82936a" stroke-width="2"/>${xy.map(([x,y],i)=>`<circle cx="${x}" cy="${y}" r="3" fill="#82936a"><title>${esc(datetime(pts[i].as_of))}: ${money(pts[i].portfolio_value)}</title></circle>`).join('')}<text x="65" y="173">${esc(date(pts[0].as_of))}</text><text x="870" y="173" text-anchor="end">${esc(date(pts.at(-1).as_of))}</text></svg><p class="chart-caption">Actual saved snapshots. Connecting lines only show the order of observations; this is not a strategy return curve.</p>`;
+  return `<svg class="chart" viewBox="0 0 900 180" role="img" aria-label="Recorded paper portfolio values, ${esc(date(pts[0].as_of))} to ${esc(date(pts.at(-1).as_of))}">${[0,1,2].map(i=>`<line x1="65" x2="870" y1="${35+i*55}" y2="${35+i*55}" stroke="var(--line)" stroke-dasharray="3 5"/><text x="0" y="${39+i*55}">${esc(money(max-i*(max-min)/2))}</text>`).join('')}<polyline points="${xy.map(p=>p.join(',')).join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2"/>${xy.map(([x,y],i)=>`<circle cx="${x}" cy="${y}" r="3" fill="var(--accent)"><title>${esc(datetime(pts[i].as_of))}: ${money(pts[i].portfolio_value)}</title></circle>`).join('')}<text x="65" y="173">${esc(date(pts[0].as_of))}</text><text x="870" y="173" text-anchor="end">${esc(date(pts.at(-1).as_of))}</text></svg><p class="chart-caption">Actual saved snapshots. Connecting lines only show the order of observations; this is not a strategy return curve.</p>`;
 }
 function performancePage(){
   const r=data.reports[Math.min(state.report,data.reports.length-1)];
@@ -163,9 +168,22 @@ function operations(){
   };
   return heading('WORKSPACE / 01','Phase 7 Operations','Review run history, portfolio snapshots and paper execution records.')+`<div class="stat-grid">${metric('Latest run',op.latest_run?esc(human(op.latest_run.status)):'—',op.latest_run?date(op.latest_run.created_at):'No runs recorded')}${metric('Open positions',has?n(s.open_positions,0):'—','In the latest portfolio snapshot')}${metric('Portfolio value',has?money(s.portfolio_value):'—',has?date(s.as_of):'No snapshot recorded')}${metric('Exposure',has?pct(s.exposure_pct):'—','Of recorded portfolio value')}</div>`+tabs([['runs','Runs'],['portfolio','Portfolio'],['positions','Positions'],['orders','Orders'],['fills','Fills'],['gates','Risk gates']],tab)+toolbar('Search operation records…')+table(datasets[tab],cols[tab],{title:labels[tab],emptyTitle:`No ${labels[tab].toLowerCase()}`,emptyDescription:'This view displays records from the local Phase 7 workflow.'})+`<p class="note">Latest report path: <span class="mono">${esc(op.latest_report_path||'No report path recorded.')}</span></p><p class="note">Recent view: up to 25 runs and 100 records per execution category. All values are saved paper records.</p>`;
 }
+const themeOptions=[['light','Light','Warm paper & sage'],['dark','Dark','Deep green & soft gold'],['system','System','Follow your device']];
+function appearanceOptions(){
+  return `<div class="theme-options" role="group" aria-label="Appearance">${themeOptions.map(([value,label,description])=>`<button class="theme-option" data-action="theme" data-value="${value}" aria-pressed="${window.lmaTheme.preference===value}"><span class="theme-swatch ${value}" aria-hidden="true"><span></span></span><span class="theme-option-label">${icon(value)}<strong>${label}</strong><span class="theme-check" aria-hidden="true">✓</span></span><small>${description}</small></button>`).join('')}</div><p class="note" id="theme-description" aria-live="polite"></p>`;
+}
+function syncAppearance(){
+  const preference=window.lmaTheme.preference;
+  $('#theme-select').value=preference;
+  $('#theme-icon').innerHTML=icon(preference);
+  document.querySelectorAll('[data-action="theme"]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.value===preference)));
+  const description=$('#theme-description');
+  if(description)description.textContent=preference==='system'?`Following your system · ${document.documentElement.dataset.theme==='dark'?'Dark':'Light'} appearance`:`${preference==='dark'?'Dark':'Light'} appearance · saved in this browser`;
+  scene.setTheme();
+}
 function settingsPage(){
   const s=data.settings;
-  return heading('WORKSPACE / 02','Settings','Your local configuration, visible in one place.')+`<div class="settings-grid"><section class="panel panel-pad"><h2>Workspace</h2>${definitionList({database:s.db_path,raw_cache:s.raw_cache_dir,research_briefs:s.research_brief_dir,research_provider:s.llm_provider})}</section><section class="panel panel-pad"><h2>Execution policy</h2>${definitionList({real_money_enabled:s.real_money_enabled,allow_live_orders:s.allow_live_orders,human_approval_required:s.human_approval_required})}<p class="note">This dashboard provides read-only access to saved records.</p></section><section class="panel panel-pad"><h2>Risk parameters</h2>${definitionList(s.risk)}</section><section class="panel panel-pad"><h2>Risk gates</h2>${definitionList(s.risk_gates)}</section><section class="panel panel-pad full-width"><h2>Display & motion</h2><p class="note">The architectural bull shifts its perspective as you navigate. Your system’s reduced-motion preference is respected automatically.</p><button class="button" data-action="motion">${motionPaused?'Resume background motion':'Pause background motion'}</button><p class="note">Display preference is saved in this browser. Configuration values above are inspected here and managed through the local project.</p></section></div>`;
+  return heading('WORKSPACE / 02','Settings','Your local configuration, visible in one place.')+`<div class="settings-grid"><section class="panel panel-pad full-width"><h2>Appearance</h2><p class="note">Choose a palette for your workspace. System adapts automatically when your device changes appearance.</p>${appearanceOptions()}<div class="motion-settings"><h2>Background motion</h2><p class="note">The architectural bull shifts its perspective as you navigate. Your system’s reduced-motion preference is respected automatically.</p><button class="button" data-action="motion">${motionPaused?'Resume background motion':'Pause background motion'}</button><p class="note">Appearance and motion preferences are saved in this browser. Configuration values above are inspected here and managed through the local project.</p></div></section><section class="panel panel-pad"><h2>Workspace</h2>${definitionList({database:s.db_path,raw_cache:s.raw_cache_dir,research_briefs:s.research_brief_dir,research_provider:s.llm_provider})}</section><section class="panel panel-pad"><h2>Execution policy</h2>${definitionList({real_money_enabled:s.real_money_enabled,allow_live_orders:s.allow_live_orders,human_approval_required:s.human_approval_required})}<p class="note">This dashboard provides read-only access to saved records.</p></section><section class="panel panel-pad"><h2>Risk parameters</h2>${definitionList(s.risk)}</section><section class="panel panel-pad"><h2>Risk gates</h2>${definitionList(s.risk_gates)}</section></div>`;
 }
 function listHtml(values){return values?.length?`<ul>${values.map(v=>`<li>${esc(typeof v==='object'?JSON.stringify(v):v)}</li>`).join('')}</ul>`:'<p class="muted">None recorded.</p>';}
 function definitionList(record,primitivesOnly=false){return `<dl class="definition-list">${Object.entries(record).filter(([k,v])=>!k.startsWith('_')&&(!primitivesOnly||v===null||typeof v!=='object')).map(([k,v])=>`<div class="definition-row"><dt>${esc(human(k))}</dt><dd>${typeof v==='boolean'?badge(v?'Enabled':'Disabled',v?'':'neutral'):esc(v===null?'Not recorded':typeof v==='object'?JSON.stringify(v):v)}</dd></div>`).join('')}</dl>`;}
@@ -185,6 +203,7 @@ function render(){
   const renderers={overview,watchlist,briefs,signals,risk,ledger,audit,performance:performancePage,operations,settings:settingsPage};
   const countNotice=Object.values(data.meta.counts).some(c=>c>data.meta.record_limit)?`<p class="notice">This workspace contains more than ${data.meta.record_limit} records in a category. The dashboard loads the newest ${data.meta.record_limit}; older records remain in the local database.</p>`:'';
   $('#main').innerHTML=`<div class="page">${!data.meta.database_available?'<div class="notice">No local database found. The watchlist shows a fixture preview; other sections will remain empty until records are created.</div>':''}${state.page==='overview'?'':countNotice}${renderers[state.page]()}</div>`;
+  syncAppearance();
   document.title=`${names[state.page]} · Local Market Agent`;
 }
 function route(){
@@ -227,6 +246,7 @@ function closeMenu(){$('#sidebar').classList.remove('open');$('#mobile-shade').c
 document.addEventListener('click',async event=>{
   const button=event.target.closest('[data-action]');if(!button)return;
   const {action,value}=button.dataset;
+  if(action==='theme')window.lmaTheme.setPreference(value);
   if(action==='detail')showDetail(Number(value));
   if(action==='tab')location.hash=`${state.page}/${value}`;
   if(action==='brief'){state.brief=Number(value);render();scene.detail(false);}
@@ -239,7 +259,7 @@ document.addEventListener('click',async event=>{
   if(action==='copy-json'&&currentDetail){try{await navigator.clipboard.writeText(JSON.stringify(currentDetail.record,null,2));toast('Record copied.');}catch{toast('Copy unavailable. Use Download JSON instead.');}}
 });
 document.addEventListener('input',event=>{if(event.target.id==='table-search'){state.search=event.target.value;state.pageIndex=0;refreshTable();}});
-document.addEventListener('change',event=>{if(event.target.id==='table-filter'){state.filter=event.target.value;state.pageIndex=0;refreshTable();}if(event.target.id==='report-select'){state.report=Number(event.target.value);render();}});
+document.addEventListener('change',event=>{if(event.target.id==='theme-select')window.lmaTheme.setPreference(event.target.value);if(event.target.id==='table-filter'){state.filter=event.target.value;state.pageIndex=0;refreshTable();}if(event.target.id==='report-select'){state.report=Number(event.target.value);render();}});
 $('#refresh').addEventListener('click',load);
 $('#motion-toggle').addEventListener('click',()=>{setMotion(!motionPaused);if(state.page==='settings')render();});
 $('#menu-toggle').addEventListener('click',()=>{const open=!$('#sidebar').classList.contains('open');$('#sidebar').classList.toggle('open',open);$('#mobile-shade').classList.toggle('active',open);$('#menu-toggle').setAttribute('aria-expanded',String(open));$('#sidebar').inert=!open&&narrowScreen.matches;});
