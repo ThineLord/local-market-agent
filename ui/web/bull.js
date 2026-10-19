@@ -95,8 +95,14 @@ function buildBull() {
 
 export function createBullScene(canvas) {
   const ctx=canvas.getContext('2d');
-  if(!ctx)return {navigate(){},detail(){},setPaused(){}};
+  if(!ctx)return {navigate(){},detail(){},setPaused(){},setTheme(){}};
   const mesh=buildBull();
+  let palette;
+  function readPalette(){
+    const css=getComputedStyle(document.documentElement);
+    palette={facet:css.getPropertyValue('--bull-facet').trim(),line:css.getPropertyValue('--bull-line').trim(),gold:css.getPropertyValue('--bull-gold').trim()};
+  }
+  readPalette();
   const reduce=window.matchMedia('(prefers-reduced-motion: reduce)');
   let width=0,height=0,paused=false,visible=true,raf=0,last=0,time=0;
   const current={yaw:-.48,pitch:.16,zoom:1,x:.74,y:.43};
@@ -125,11 +131,11 @@ export function createBullScene(canvas) {
     // A transparent ground shadow, never a solid 3D render.
     const ground=project([0,-.2,0],yaw,pitch,zoom);
     const glow=ctx.createRadialGradient(ground[0],ground[1],0,ground[0],ground[1],width*.28);
-    glow.addColorStop(0,'rgba(169,151,110,0.065)');glow.addColorStop(1,'rgba(169,151,110,0)');
+    glow.addColorStop(0,`rgba(${palette.gold},0.065)`);glow.addColorStop(1,`rgba(${palette.gold},0)`);
     ctx.fillStyle=glow;ctx.fillRect(0,0,width,height);
     for(const [a,b,opacity] of mesh.lines) {
       const p=project(a,yaw,pitch,zoom),q=project(b,yaw,pitch,zoom);
-      ctx.beginPath();ctx.moveTo(p[0],p[1]);ctx.lineTo(q[0],q[1]);ctx.strokeStyle=`rgba(161,143,103,${opacity})`;ctx.lineWidth=.65;ctx.stroke();
+      ctx.beginPath();ctx.moveTo(p[0],p[1]);ctx.lineTo(q[0],q[1]);ctx.strokeStyle=`rgba(${palette.gold},${opacity})`;ctx.lineWidth=.65;ctx.stroke();
     }
     const points=mesh.vertices.map(v=>project(v,yaw,pitch,zoom));
     const sorted=mesh.faces.map(f=>({f,z:f.reduce((s,i)=>s+points[i][2],0)/3})).sort((a,b)=>b.z-a.z);
@@ -137,8 +143,8 @@ export function createBullScene(canvas) {
       const a=points[f[0]],b=points[f[1]],c=points[f[2]];
       // Opaque paper facets provide hidden-line removal and a sculptural silhouette.
       ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.lineTo(c[0],c[1]);ctx.closePath();
-      ctx.fillStyle='rgba(246,245,240,.91)';ctx.fill();
-      ctx.strokeStyle=`rgba(159,133,82,${Math.max(.16,Math.min(.53,.36-z*.07))})`;ctx.lineWidth=.68;ctx.stroke();
+      ctx.fillStyle=palette.facet;ctx.fill();
+      ctx.strokeStyle=`rgba(${palette.line},${Math.max(.16,Math.min(.53,.36-z*.07))})`;ctx.lineWidth=.68;ctx.stroke();
     }
   }
   function tick(stamp) {
@@ -157,6 +163,7 @@ export function createBullScene(canvas) {
   document.addEventListener('visibilitychange',()=>{visible=!document.hidden;if(!visible&&raf){cancelAnimationFrame(raf);raf=0;}else wake();});
   reduce.addEventListener('change',wake);
   return {
+    setTheme(){readPalette();wake();},
     navigate(next){page=next;updateTarget();wake();},
     detail(open){depth=open;updateTarget();wake();},
     setPaused(value){paused=value;wake();}
