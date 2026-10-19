@@ -9,7 +9,7 @@ The default mode is read-only data plus paper trading only. Live order execution
 Use Python 3.11 or newer.
 
 ```bash
-python3.13 -m venv .venv
+python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -e ".[dev]"
 ```
