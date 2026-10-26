@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from local_market_agent.config import RiskConfig
@@ -67,6 +67,18 @@ class PaperLedger:
         risk_decision: RiskDecision | None,
         snapshot: MarketSnapshot,
     ) -> tuple[PaperOrder, PaperFill, Position]:
+        with self.repository.transaction() as repository:
+            return replace(self, repository=repository)._open_in_transaction(
+                signal=signal, risk_decision=risk_decision, snapshot=snapshot
+            )
+
+    def _open_in_transaction(
+        self,
+        *,
+        signal: Signal,
+        risk_decision: RiskDecision | None,
+        snapshot: MarketSnapshot,
+    ) -> tuple[PaperOrder, PaperFill, Position]:
         if risk_decision is None:
             msg = "paper order requires an approved risk decision"
             raise ValueError(msg)
@@ -79,6 +91,29 @@ class PaperLedger:
         if signal.action not in ACTIONABLE_PAPER_BUYS:
             msg = "paper ledger can only create paper_buy_yes/no orders"
             raise ValueError(msg)
+
+        # One signal represents one paper order, including after it has closed.
+        # Check under the write lock so concurrent retries cannot both insert.
+        orders = [
+            order for order in self.repository.list_paper_orders(signal.market_id)
+            if order.signal_id == signal.signal_id
+        ]
+        if orders:
+            if len(orders) != 1 or orders[0].risk_decision_id != risk_decision.risk_decision_id:
+                raise ValueError("conflicting paper order retry for signal")
+            order = orders[0]
+            positions = [
+                position for position in self.repository.list_positions(signal.market_id)
+                if position.order_id == order.order_id
+            ]
+            fills = [
+                fill for fill in self.repository.list_paper_fills(signal.market_id)
+                if fill.order_id == order.order_id and not fill.is_closing
+            ]
+            if (len(positions) != 1 or len(fills) != 1
+                    or fills[0].position_id != positions[0].position_id):
+                raise ValueError("inconsistent existing paper transition; manual repair required")
+            return order, fills[0], positions[0]
 
         side, limit_price = _paper_side_and_limit(signal, snapshot)
         if limit_price is None:
@@ -129,6 +164,12 @@ class PaperLedger:
         return order, fill, position
 
     def close_position(self, position_id: str, close_price: float) -> Position:
+        with self.repository.transaction() as repository:
+            return replace(self, repository=repository)._close_in_transaction(
+                position_id, close_price
+            )
+
+    def _close_in_transaction(self, position_id: str, close_price: float) -> Position:
         if not 0 <= close_price <= 1:
             msg = "close_price must be between 0 and 1"
             raise ValueError(msg)
@@ -189,6 +230,14 @@ class PaperLedger:
         marks: dict[str, float] | None = None,
         *,
         persist: bool = True,
+    ) -> PortfolioSnapshot:
+        with self.repository.transaction(write=persist) as repository:
+            return replace(self, repository=repository)._snapshot_in_transaction(
+                marks, persist=persist
+            )
+
+    def _snapshot_in_transaction(
+        self, marks: dict[str, float] | None, *, persist: bool
     ) -> PortfolioSnapshot:
         marks = marks or {}
         positions = self.repository.list_positions()

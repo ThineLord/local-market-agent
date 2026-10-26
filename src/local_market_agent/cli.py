@@ -1093,7 +1093,7 @@ def phase7_run_daily(
     ),
     dry_run: Annotated[
         bool,
-        typer.Option(help="Evaluate the paper run without creating paper positions."),
+        typer.Option(help="Preview in a temporary database; leave business state unchanged. Reports go to dry_run/."),
     ] = False,
     require_manual_approval: Annotated[
         bool | None,
