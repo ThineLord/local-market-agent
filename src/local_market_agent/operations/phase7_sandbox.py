@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -71,6 +71,34 @@ class Phase7SandboxRunner:
         replay_sample_size: int = 1,
         sandbox_id: str | None = None,
     ) -> Phase7SandboxResult:
+        if dry_run:
+            with self.repository.preview_copy() as repository:
+                return replace(
+                    self, repository=repository,
+                    report_dir=self.report_dir / "dry_run",
+                    summary_dir=(self.summary_dir / "dry_run") if self.summary_dir else None,
+                )._run(
+                    start_date=start_date, end_date=end_date, days=days, dry_run=True,
+                    require_manual_approval=require_manual_approval,
+                    replay_sample_size=replay_sample_size, sandbox_id=sandbox_id,
+                )
+        return self._run(
+            start_date=start_date, end_date=end_date, days=days, dry_run=False,
+            require_manual_approval=require_manual_approval,
+            replay_sample_size=replay_sample_size, sandbox_id=sandbox_id,
+        )
+
+    def _run(
+        self,
+        *,
+        start_date: date | None,
+        end_date: date | None,
+        days: int | None,
+        dry_run: bool,
+        require_manual_approval: bool | None,
+        replay_sample_size: int,
+        sandbox_id: str | None,
+    ) -> Phase7SandboxResult:
         _assert_paper_only(self.settings)
         market_source = self.market_source or self.settings.market_source
         market_id = self.market_id if self.market_id is not None else self.settings.market_id
@@ -129,7 +157,9 @@ class Phase7SandboxRunner:
             simulated_at = datetime.combine(simulated_date, time(hour=16), tzinfo=UTC)
             seed = f"{sandbox_id}:{simulated_date.isoformat()}"
             with deterministic_model_context(seed=seed, now=simulated_at):
-                record = daily_runner.run(
+                # The sandbox already owns an isolated preview for the whole batch,
+                # keeping its equity curve and replay references available until done.
+                record = daily_runner._run(
                     dry_run=dry_run,
                     require_manual_approval=require_manual_approval,
                     now=simulated_at,

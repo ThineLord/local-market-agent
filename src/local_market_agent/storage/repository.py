@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import closing, contextmanager
+from copy import copy
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import TypeVar
 
 from pydantic import BaseModel
@@ -54,8 +57,51 @@ class SQLiteRepository:
         conn.row_factory = sqlite3.Row
         return conn
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        conn = getattr(self, "_transaction_connection", None)
+        if conn is not None:
+            yield conn
+        else:
+            with closing(self._connect()) as conn, conn:
+                yield conn
+
+    @contextmanager
+    def transaction(self, *, write: bool = True) -> Iterator[SQLiteRepository]:
+        """Yield a connection-bound repository; serialize read/check/write transitions.
+
+        The original repository stays unbound and can be used by other threads.
+        Use only the yielded repository inside the unit of work. Nested units are
+        rejected rather than accidentally committing an outer transaction.
+        """
+        if getattr(self, "_transaction_connection", None) is not None:
+            raise RuntimeError("nested repository transactions are not supported")
+        with closing(self._connect()) as conn:
+            conn.execute("BEGIN IMMEDIATE" if write else "BEGIN")
+            bound = copy(self)
+            bound._transaction_connection = conn
+            try:
+                yield bound
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+
+    @contextmanager
+    def preview_copy(self) -> Iterator[SQLiteRepository]:
+        """Copy a consistent read-only source snapshot to a disposable database."""
+        with TemporaryDirectory(prefix="lma-dry-run-") as directory:
+            preview = SQLiteRepository(Path(directory) / "preview.sqlite")
+            uri = self.db_path.resolve().as_uri() + "?mode=ro"
+            with (
+                closing(sqlite3.connect(uri, uri=True)) as source,
+                closing(preview._connect()) as target,
+            ):
+                source.backup(target)
+            yield preview
+
     def _init_db(self) -> None:
-        with self._connect() as conn:
+        with self._connection() as conn:
             for table, key in self.TABLES.items():
                 conn.execute(
                     f"""
@@ -114,7 +160,7 @@ class SQLiteRepository:
 
     def _save(self, table: str, key_name: str, model: BaseModel) -> None:
         key = getattr(model, key_name)
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.execute(
                 f"""
                 INSERT INTO {table} ({key_name}, market_id, created_at, payload)
@@ -128,7 +174,7 @@ class SQLiteRepository:
             )
 
     def _load(self, table: str, key_name: str, key: str, model_cls: type[T]) -> T | None:
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(
                 f"SELECT payload FROM {table} WHERE {key_name} = ?",
                 (key,),
@@ -154,7 +200,7 @@ class SQLiteRepository:
             limit_clause = "LIMIT ?"
             params.append(limit)
         query = f"SELECT payload FROM {table} {where} ORDER BY created_at DESC {limit_clause}"
-        with self._connect() as conn:
+        with self._connection() as conn:
             rows = conn.execute(query, params).fetchall()
         return [model_cls.model_validate_json(row["payload"]) for row in rows]
 
@@ -328,7 +374,7 @@ class SQLiteRepository:
         if table not in self.TABLES:
             msg = f"unknown table: {table}"
             raise ValueError(msg)
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()
         return int(row["count"])
 
@@ -336,7 +382,7 @@ class SQLiteRepository:
         if table not in self.TABLES:
             msg = f"unknown table: {table}"
             raise ValueError(msg)
-        with self._connect() as conn:
+        with self._connection() as conn:
             rows = conn.execute(f"SELECT payload FROM {table} ORDER BY created_at").fetchall()
         for row in rows:
             yield json.loads(row["payload"])
