@@ -39,7 +39,7 @@ def synthetic_portfolio(repo, brief, snapshot):
 @pytest.mark.parametrize('outcome', ['yes', 'no'])
 @pytest.mark.parametrize('mode', ['approved', 'manual', 'rejected', 'failed'])
 def test_dry_run_existing_holdings_and_all_business_tables_unchanged(
-    repo, synthetic_portfolio, snapshot, tmp_path, monkeypatch, outcome, mode,
+    repo, synthetic_portfolio, snapshot, evidence, tmp_path, monkeypatch, outcome, mode,
 ):
     def forbidden(*args, **kwargs):
         raise AssertionError('dry-run must not execute a ledger transition or external call')
@@ -51,6 +51,8 @@ def test_dry_run_existing_holdings_and_all_business_tables_unchanged(
     historical.write_text(json.dumps({
         'date': '2026-06-05', 'market_id': snapshot.market.market_id,
         'bid': 0.49, 'ask': 0.51, 'last_price': 0.5, 'implied_probability': 0.5,
+        'liquidity': 4000, 'volume': 12500,
+        'evidence': [item.model_dump(mode='json') for item in evidence],
         'settlement': {'outcome': outcome, 'source': 'synthetic-test'},
     }) + '\n')
     settings = Settings(
@@ -77,7 +79,13 @@ def test_dry_run_existing_holdings_and_all_business_tables_unchanged(
     before = business_hash(repo)
     cash = synthetic_portfolio.snapshot_portfolio(persist=False).cash_balance
     record = runner.run(dry_run=True, now=NOW)
-    assert record.status != Phase7RunStatus.FAILED or mode == 'failed', record.reasons
+    expected_status = {
+        'approved': Phase7RunStatus.DRY_RUN,
+        'manual': Phase7RunStatus.PENDING_MANUAL_APPROVAL,
+        'rejected': Phase7RunStatus.REJECTED,
+        'failed': Phase7RunStatus.FAILED,
+    }[mode]
+    assert record.status == expected_status, record.reasons
     assert business_hash(repo) == before
     assert synthetic_portfolio.snapshot_portfolio(persist=False).cash_balance == cash
     assert len(synthetic_portfolio.open_positions()) == 2
