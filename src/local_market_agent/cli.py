@@ -426,11 +426,11 @@ def workflow_status_command(db: Annotated[Path | None, typer.Option()] = None) -
 @app.command()
 def report_daily(
     db: Annotated[Path | None, typer.Option(help="SQLite database path.")] = None,
+    export_dir: Annotated[Path, typer.Option(help="Directory for paper-order exports.")] = Path("data/reports"),
 ) -> None:
     settings = _settings(db)
     repo = _repository(settings)
     report = DailyReportService(repo, settings.risk).build_report()
-    export_dir = Path("data/reports")
     ledger = PaperLedger(repo, settings.risk)
     jsonl = ledger.export_jsonl(export_dir / "paper_orders.jsonl")
     csv = ledger.export_csv(export_dir / "paper_orders.csv")

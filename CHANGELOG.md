@@ -4,6 +4,10 @@ Application releases use `vMAJOR.MINOR.PATCH`. See [version management](docs/VER
 
 ## Unreleased
 
+No changes yet.
+
+## 0.3.0 — 2026-11-09
+
 - Add source-bound evidence packets, explicit research/settlement review, atomic settlement receipts, an isolated CLI demo and read-only next-step guidance.
 
 - Seal run and execution artifact contents, verify semantic links on replay, and return distinct CLI failure/rejection/pending statuses.
@@ -13,6 +17,8 @@ Application releases use `vMAJOR.MINOR.PATCH`. See [version management](docs/VER
 - Share fail-closed screening/execution preflight and persist UTC equity baselines and peak drawdown; preserve real observation times and research vetoes.
 
 - Make paper ledger opens/closes atomic and idempotent; isolate daily and sandbox dry-runs from the source database.
+
+[English release notes](docs/releases/0.3.0.md) · [中文发布说明](docs/releases/0.3.0.zh-CN.md)
 
 ## 0.2.0 — 2026-11-09
 

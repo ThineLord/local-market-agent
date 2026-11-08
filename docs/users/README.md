@@ -4,7 +4,7 @@
 
 Local Market Agent is an offline-first research, risk-control, and paper-trading system for public market data. It provides deterministic local demos and an audit trail for experimental paper workflows.
 
-The default mode is read-only data plus paper trading only. Live order execution, withdrawals, leverage, derivatives, shorting, private trading APIs, and direct LLM-to-order flows are out of scope. Historical audits still record paper-workflow limitations; see the [release notes](../releases/0.2.0.md).
+The default mode is read-only data plus paper trading only. Live order execution, withdrawals, leverage, derivatives, shorting, private trading APIs, and direct LLM-to-order flows are out of scope. Historical audits still record paper-workflow limitations; see the [release notes](../releases/0.3.0.md).
 
 ## Setup
 
@@ -23,12 +23,8 @@ Run all commands below from the repository root with the environment activated. 
 The following commands write local research, risk, report, and potentially simulated order records. Keep the default safety settings; no simulated fill is guaranteed when checks block a signal.
 
 ```bash
-export LMA_LLM_PROVIDER=mock
-lma ingest-demo
-lma generate-brief --fixture data/fixtures/demo_market.json
-lma risk-check
-lma paper-log
-lma report-daily
+python scripts/demo_workflow.py --output data/reports/workflow-demo
+LMA_DB_PATH=data/reports/workflow-demo/demo.sqlite python ui/server.py --port 8503
 ```
 
 These commands use deterministic fixtures with the mock provider and do not require API keys. Outputs normally live under `data/`; keep local databases, exports, and credentials out of Git.

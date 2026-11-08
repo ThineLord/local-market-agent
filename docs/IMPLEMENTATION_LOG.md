@@ -874,3 +874,9 @@
 - Validation: full offline suite **429 passed, 1 skipped**; Ruff, release metadata, three JavaScript syntax checks and diff whitespace passed. Ten new packet/workflow tests cover end-to-end settlement, source/path/time/review/brief failures, missing-liquidity blocks, atomic fault rollback, and read-only/tamper-state projection.
 
 - Independent review found an old research source could be reused as final settlement evidence. Added exact resolution-source URL binding and final-source retrieval/publication timing checks; the synthetic demo now carries a distinct final-resolution receipt. Three regressions reject wrong sources, pre-result collection and pre-result publication with the holding unchanged. Final full suite: **432 passed, 1 skipped**.
+
+## Version 0.3.0 release validation (2026-11-09)
+
+- Updated package/runtime versions, bilingual homepages/release notes, versioned validation map and current user/Agent guidance. Functional fixes were reviewed and merged in PRs #4, #6, #7, #8 and #9.
+- Release review found the demo report step wrote default exports outside its output directory. Added optional report-daily --export-dir, passed the isolated demo reports directory, and added a sentinel-export regression. Also clarified that independent source review is specific to evidence packets; daily/legacy paths require hard preflight and order approval but not a PacketReview.
+- Final release validation: **433 passed, 1 skipped**; Ruff, v0.3.0 metadata, three JavaScript syntax checks, diff checks and 157 local Markdown targets passed. Actual demo uses 15 CLI calls; browser navigation covered all ten pages with no overflow, desktop/390px and command copying. Full real-source results and remaining limits are in docs/reports/0.3.0-validation.zh-CN.md.

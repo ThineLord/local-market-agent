@@ -6,7 +6,7 @@
 
 **For agents:** read [AGENTS.md](AGENTS.md), then the [Agent guide](docs/agents/README.md).
 
-Local Market Agent connects **public market snapshots → research briefs → risk checks → simulated trades → local reports**. It is an offline-first Python workspace for inspecting evidence and testing paper workflows with deterministic fixtures and a local dashboard.
+Local Market Agent connects **public market snapshots → research briefs → risk checks → explicit approval → simulated trades → local reports**. It is an offline-first Python workspace for inspecting evidence and testing paper workflows with deterministic fixtures and a local dashboard.
 
 **Paper trading only.** This is an experimental research tool, not a live trading service. Demo results do not establish profitability or production readiness.
 
@@ -27,7 +27,7 @@ Open **http://127.0.0.1:8502/#watchlist/screening**. This synthetic example runs
 ## Three steps
 
 1. **Inspect a watchlist.** Compare snapshots, evidence gaps, and blocking checks.
-2. **Review research and risk.** Use the CLI workflows in the user guide; an LLM can draft research only.
+2. **Review and approve an intent.** Follow the [approval workflow](docs/users/PAPER_WORKFLOW.md); an LLM can draft research only.
 3. **Read the audit trail.** Inspect saved reports and simulated records in the local, read-only dashboard.
 
 ## Project layout
@@ -51,8 +51,8 @@ docs/archive/            historical phase plans and reviews
 - [Agent guide](docs/agents/README.md) · [中文 Agent 指南](docs/agents/README.zh-CN.md)
 - [Documentation index](docs/README.md) · [Safety and risk](docs/SAFETY_AND_RISK.md)
 - [Changelog](CHANGELOG.md) · [Version policy](docs/VERSIONING.md)
-- [0.2.0 release notes](docs/releases/0.2.0.md) · [GitHub Releases](https://github.com/ThineLord/local-market-agent/releases)
+- [0.3.0 release notes](docs/releases/0.3.0.md) · [GitHub Releases](https://github.com/ThineLord/local-market-agent/releases)
 
-The application version is **0.2.0**. Future releases use matching package versions, `vX.Y.Z` tags, release notes, and reviewed PRs. Codex coordinates the work; subagents review and merge. No bot delegation is used.
+The application version is **0.3.0**. Future releases use matching package versions, `vX.Y.Z` tags, release notes, and reviewed PRs. Codex coordinates the work; subagents review and merge. No bot delegation is used.
 
-Defaults remain `REAL_MONEY_ENABLED=false`, `ALLOW_LIVE_ORDERS=false`, and `HUMAN_APPROVAL_REQUIRED=true`. Every paper order must reference a signal and an approved risk decision. See the release notes for known limitations and excluded work.
+Defaults remain `REAL_MONEY_ENABLED=false`, `ALLOW_LIVE_ORDERS=false`, and `HUMAN_APPROVAL_REQUIRED=true`. Every paper order must reference a signal and an approved risk decision. Try the [complete isolated demo](docs/users/README.md#approval-and-evidence-workflow). See the release notes for migration and remaining limitations.

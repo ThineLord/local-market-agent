@@ -8,7 +8,12 @@ Start with the guide for your role and language. Historical plans and reports de
 | Users | [User guide](users/README.md) | [用户指南](users/README.zh-CN.md) |
 | Agents | [Agent guide](agents/README.md) | [Agent 指南](agents/README.zh-CN.md) |
 | Releases | [Version policy](VERSIONING.md) | [版本规则](VERSIONING.zh-CN.md) |
+| Version 0.3.0 | [Release notes](releases/0.3.0.md) | [发布说明](releases/0.3.0.zh-CN.md) |
 | Version 0.2.0 | [Release notes](releases/0.2.0.md) | [发布说明](releases/0.2.0.zh-CN.md) |
+
+- [Paper approval workflow](users/PAPER_WORKFLOW.md) · [逐意图审批](users/PAPER_WORKFLOW.zh-CN.md)
+- [Evidence packets](users/EVIDENCE_PACKETS.md) · [证据包与结算](users/EVIDENCE_PACKETS.zh-CN.md)
+- [0.3.0 validation and improvement map](reports/0.3.0-validation.zh-CN.md)
 
 ## Current technical references
 
