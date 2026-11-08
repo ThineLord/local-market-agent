@@ -4,7 +4,7 @@ Application releases use `vMAJOR.MINOR.PATCH`. See [version management](docs/VER
 
 ## Unreleased
 
-No changes yet.
+- Add isolated Hong Kong historical ticket replay with receipt-bound public results, separate entitlement/cash accounting and explicit UNKNOWN pre-race evidence.
 
 ## 0.4.0 — 2026-11-09
 
