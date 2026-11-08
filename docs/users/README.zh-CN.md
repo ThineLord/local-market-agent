@@ -122,3 +122,7 @@ LMA_DB_PATH=data/reports/workflow-demo/demo.sqlite python ui/server.py --port 85
 ```
 
 如果目录已存在，请使用另一个新目录，保留历史演示记录。首页“Your next step”显示版本、观察时间、状态、原因及可复制命令。审批仍在终端明确完成。`lma workflow-status --db PATH` 提供同样的 JSON 状态。
+
+### 可验证的 NBA 概率流程
+
+[固定 NBA 概率协议](../NBA_PROBABILITY.md)说明公开深度筛选、冻结的比分模型、按时间分离的留出验证和当前比赛证据包。`scripts/build_nba_packet.py` 严格匹配赛前比赛与合同，保留全部来源以便离线复算，不批准订单。现有风控门槛、简报审核和逐意图审批继续生效；已开赛、来源过期、保守净优势不足均阻断执行。历史比分为事后采集，不代表交易回测盈利。

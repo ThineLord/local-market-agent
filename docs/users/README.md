@@ -179,3 +179,7 @@ LMA_DB_PATH=data/reports/workflow-demo/demo.sqlite python ui/server.py --port 85
 ```
 
 Use a different new output directory if it already exists; previous records are preserved. The dashboard's “Your next step” shows version, observation time, status, reasons and copyable commands. Approval stays an explicit terminal action. `lma workflow-status --db PATH` returns the same read-only projection.
+
+### Verifiable NBA model workflow
+
+The [fixed NBA probability protocol](../NBA_PROBABILITY.md) describes opt-in public depth discovery, a frozen score-based model, chronological holdout validation, and a source-bound current-game packet. The new `scripts/build_nba_packet.py` checks exact pregame identity and preserves every source for offline reproduction. It does not approve an order. Existing risk thresholds, research review and per-intent approval remain required; game-start, source-age and conservative-edge failures block execution. Historical validation is retrospective and is not evidence of trading profit.
