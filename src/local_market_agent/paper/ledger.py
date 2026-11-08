@@ -352,10 +352,15 @@ def _paper_side_and_limit(
 
 
 def _mark_for_position(position: Position, marks: dict[str, float]) -> float:
-    mark = marks.get(position.market_id, position.average_price)
+    # Explicit market marks are always YES probabilities, matching snapshots.
+    # A missing mark falls back to the held outcome's own cost, already oriented.
+    has_market_mark = position.market_id in marks
+    mark = marks[position.market_id] if has_market_mark else position.average_price
     if not 0 <= mark <= 1:
         msg = "mark prices must be between 0 and 1"
         raise ValueError(msg)
+    if has_market_mark and position.side == OrderSide.BUY_NO:
+        return 1 - mark
     return mark
 
 

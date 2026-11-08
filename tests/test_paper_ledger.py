@@ -54,7 +54,9 @@ def test_vetoed_decision_cannot_create_order(repo, brief, snapshot):
     decision = RiskEngine().evaluate_signal(signal)
     assert decision.status == RiskStatus.VETOED
     with pytest.raises(ValueError, match="approved risk decision"):
-        PaperLedger(repo, simulation_only=True).create_order(signal=signal, risk_decision=decision, snapshot=snapshot)
+        PaperLedger(repo, simulation_only=True).create_order(
+            signal=signal, risk_decision=decision, snapshot=snapshot
+        )
 
 
 def test_paper_buy_no_order_uses_no_side(repo, brief, snapshot):
@@ -130,3 +132,79 @@ def test_portfolio_snapshot_tracks_cash_pnl_and_fees(repo, brief, snapshot):
     assert closed_snapshot.closed_positions == 1
     assert closed_snapshot.realized_pnl == closed.realized_pnl
     assert closed_snapshot.portfolio_value == closed_snapshot.cash_balance
+
+
+def test_no_market_marks_invert_yes_probability_but_not_cost_fallback(repo, brief, snapshot):
+    no_brief = brief.model_copy(
+        update={"estimated_probability": 0.35, "recommended_action": RecommendedAction.PAPER_BUY_NO}
+    )
+    signal = PredictionMarketEdgeStrategy().generate_signal(no_brief, snapshot)
+    decision = RiskEngine().evaluate_signal(signal)
+    repo.save_signal(signal)
+    repo.save_risk_decision(decision)
+    ledger = PaperLedger(repo, simulation_only=True)
+    position = ledger.open_position(signal=signal, risk_decision=decision, snapshot=snapshot)
+    market_id = snapshot.market.market_id
+    for yes_probability in (0.0, 0.1, 0.7, 1.0):
+        marks = {market_id: yes_probability}
+        portfolio = ledger.snapshot_portfolio(marks, persist=False)
+        assert portfolio.market_values[position.position_id] == round(
+            (1 - yes_probability) * position.quantity, 4
+        )
+        assert portfolio.unrealized_pnl == round(
+            ((1 - yes_probability) - position.average_price) * position.quantity - position.fees, 4
+        )
+        assert portfolio.portfolio_value == round(
+            portfolio.cash_balance + (1 - yes_probability) * position.quantity, 4
+        )
+    assert ledger.unrealized_pnl() == -position.fees
+    assert ledger.snapshot_portfolio(persist=False).market_values[position.position_id] == round(
+        position.average_price * position.quantity, 4
+    )
+
+
+def test_public_style_no_execution_equity_and_report_use_outcome_value(repo, brief, snapshot):
+    from datetime import timedelta
+
+    from local_market_agent.config import Settings
+    from local_market_agent.paper.execution import PaperExecutionService
+    from local_market_agent.reporting import DailyReportService
+    from local_market_agent.risk.equity import loss_metrics
+    from local_market_agent.schemas.models import utc_now
+
+    now = utc_now()
+    snapshot = snapshot.model_copy(
+        update={
+            "as_of": now,
+            "best_bid": 0.52,
+            "best_ask": 0.53,
+            "market_implied_probability": 0.525,
+            "market": snapshot.market.model_copy(update={"close_time": now + timedelta(days=1)}),
+        }
+    )
+    brief = brief.model_copy(
+        update={
+            "snapshot_id": snapshot.snapshot_id,
+            "created_at": now,
+            "estimated_probability": 0.33,
+            "recommended_action": RecommendedAction.PAPER_BUY_NO,
+        }
+    )
+    settings = Settings(db_path=repo.db_path)
+    signal = PredictionMarketEdgeStrategy(settings.risk).generate_signal(brief, snapshot)
+    risk = RiskEngine(settings.risk).evaluate_signal(signal)
+    service = PaperExecutionService(repo, settings)
+    intent = service.prepare(signal, risk, snapshot, brief, now=now, simulation=True)
+    service.approve(
+        intent.intent_id, actor="synthetic-regression", reason="Fixture NO valuation", now=now
+    )
+    assert service.execute(intent.intent_id, now=now)["status"] == "completed"
+    portfolio = repo.list_portfolio_snapshots(limit=1)[0]
+    assert portfolio.portfolio_value == pytest.approx(9998.6526)
+    assert portfolio.unrealized_pnl == pytest.approx(-1.3474)
+    assert portfolio.peak_equity == 10000
+    assert loss_metrics(portfolio)["daily_loss_pct"] > 0
+    assert repo.list_equity_baselines()[0].last_equity == portfolio.portfolio_value
+    report = DailyReportService(repo).build_report({snapshot.market.market_id: 0.525})
+    assert report.ending_cash == portfolio.portfolio_value
+    assert report.unrealized_pnl == portfolio.unrealized_pnl
