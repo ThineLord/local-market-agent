@@ -32,3 +32,19 @@ Validation is offline and reconstructs predictions from the checksummed source f
 ESPN's public schedule payloads supply scores; this endpoint is not a guaranteed stable developer contract. Top-level season labels can refer to the current year, so the loader validates each event's season instead. The algorithm ignores injuries, lineups, roster changes and bookmaker information. It does not perform parameter-sensitivity validation. Current input age and pregame identity/status must be checked separately by the packet workflow.
 
 Reference: [FiveThirtyEight's original data README](https://raw.githubusercontent.com/fivethirtyeight/data/master/nba-elo/README.md) distinguishes pregame/postgame ratings and forecasts. The actual fixed formula and parameters for this project are defined in `src/local_market_agent/nba_probability.py` and recorded in each acquisition's `protocol.json` before its data collection starts.
+
+## Source-bound current paper workflow
+
+```bash
+python scripts/screen_public_markets.py --output data/reports/nba-screen-NEW --allow-network
+python scripts/build_nba_packet.py --history data/reports/nba-history-NEW --output data/reports/nba-packet-NEW --allow-network
+lma packet-check --packet data/reports/nba-packet-NEW/packet/packet.json
+```
+
+The collector covers a bounded three-day New York schedule window, matches exact NBA team IDs, event ticker/date, regular-season game type, YES identity and primary contract wording, and requires explicit pregame status/time. It ranks supported candidates by conservative two-sided best-quote USD depth and prepares one packet, avoiding simultaneous opposite contracts on the same game. It fetches the chosen market again after building the evidence. A market with no supported model edge remains an observation with vetoes; no eligible pregame match ends with a diagnostic report.
+
+Each packet retains 120 historical source receipts, three daily scoreboards, series rules, final market/order book, protocol/manifest and two derived reports. `analysis://nba-elo/` denotes a local, checksummed derived artifact, never an external publication. Its publication time is its actual creation time; raw historical scores are not assigned invented historical publication dates. Both analyses share ESPN data and do not represent independent forecasting publishers. On packet import, the model, quote, event mapping, ratings, holdout validation and stress support are recomputed offline from these files. The packet's exact research-review receipt remains separate from order approval.
+
+`nba_model_gate` runs during preparation, approval and execution. In addition to existing gates, it requires the game not to have started, event-status age within the existing 300-second quote limit, current-season source age at most six hours, the fixed model specification, reproducible probability/bin/cost relationships, all holdout requirements, and a conservative net edge of at least the unchanged threshold. Refreshing an analysis timestamp cannot refresh old input data. Source verification is local consistency checking, not cryptographic publisher authentication.
+
+Use the existing `packet-review`, `packet-prepare`, `paper-approve`, `paper-execute` and `paper-replay` commands after inspection (see the user guide). Collection never writes a trading database or grants approval. No future game outcome or settlement is synthesized. Real public candidates require the ordinary per-intent approval path; automatic fixture authorization is unavailable for public markets.

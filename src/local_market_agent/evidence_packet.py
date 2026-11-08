@@ -74,8 +74,10 @@ def load_packet(path, *, now=None):
         raise ValueError("Unique source IDs and market source receipt required")
     for source in packet.sources:
         url = urlparse(source.url)
-        if url.scheme not in {"https", "http", "synthetic"} or url.username or url.password:
-            raise ValueError("Source URL must be public or explicitly synthetic")
+        if (url.scheme not in {"https", "http", "synthetic", "analysis"}
+                or (url.scheme == "analysis" and url.netloc != "nba-elo")
+                or url.username or url.password):
+            raise ValueError("Source URL must be public, explicitly synthetic or local NBA analysis")
         source_path = (path.parent / source.path).resolve()
         if not source_path.is_relative_to(path.parent) or not source_path.is_file():
             raise ValueError("Source file must be inside the packet directory")
@@ -120,6 +122,12 @@ def load_packet(path, *, now=None):
             raise ValueError("Final settlement source must be collected after resolution and before the settled snapshot")
         if final_source.published_at and utc(final_source.published_at) < utc(settlement.resolved_at):
             raise ValueError("Final settlement publication predates resolution")
+    if any(e.metadata.get("model") == "nba_fixed_elo_v1" for e in packet.evidence):
+        from local_market_agent.nba_workflow import verify_nba_packet
+        try:
+            verify_nba_packet(packet, path.parent)
+        except (KeyError, TypeError, IndexError, StopIteration, OverflowError) as exc:
+            raise ValueError("Invalid NBA source-bound proof: " + str(exc)) from exc
     return packet
 
 

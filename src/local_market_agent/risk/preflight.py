@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from local_market_agent.config import Settings
+from local_market_agent.nba_guard import forecast_gate
 from local_market_agent.schemas import MarketSnapshot, ResearchBrief
 
 
@@ -146,6 +147,10 @@ def brief_checks(
         "The brief must identify an unambiguous resolution source.",
     )
 
+    model_check = forecast_gate(snapshot, brief, settings, now)
+    if model_check is not None:
+        passed, reasons = model_check
+        check("nba_model_gate", passed, "; ".join(reasons) or "Frozen NBA probability, conservative edge and pregame/source-age requirements passed.")
     return checks
 
 
