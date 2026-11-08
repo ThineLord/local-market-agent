@@ -34,3 +34,8 @@ output/
 
 # Private horse snapshots, ticket histories and derived reports
 /data/horse/
+
+# Legacy reports are local outputs; retain only the documented compatibility input.
+docs/reports/*.md
+!docs/reports/README.md
+!docs/reports/kalshi_category_calibration_analysis.md

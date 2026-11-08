@@ -24,12 +24,12 @@ def validate(root: Path, tag: str | None = None) -> str:
         raise ValueError(f"Python version {declared!r} does not match package {version}")
     if tag is not None and tag != f"v{version}":
         raise ValueError(f"Tag {tag!r} does not match v{version}")
-    for name in ("README.md", "README.zh-CN.md"):
+    for name in ("README.md", "docs/README.zh-CN.md"):
         if f"**{version}**" not in (root / name).read_text():
             raise ValueError(f"{name} must display **{version}**")
-    changelog = (root / "CHANGELOG.md").read_text()
+    changelog = (root / "docs/CHANGELOG.md").read_text()
     if not re.search(rf"^## {re.escape(version)} — \d{{4}}-\d{{2}}-\d{{2}}$", changelog, re.M):
-        raise ValueError(f"CHANGELOG.md lacks a dated {version} entry")
+        raise ValueError(f"docs/CHANGELOG.md lacks a dated {version} entry")
     for suffix in (".md", ".zh-CN.md"):
         path = root / "docs/releases" / f"{version}{suffix}"
         if not path.is_file() or not path.read_text().startswith(f"# Local Market Agent {version}\n"):

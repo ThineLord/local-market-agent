@@ -1,6 +1,6 @@
 # 用户指南
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [项目首页](../../README.zh-CN.md)
+[English](README.md) · [简体中文](README.zh-CN.md) · [项目首页](../README.zh-CN.md)
 
 Local Market Agent 用于公开数据研究、风险检查和模拟交易。它优先支持离线示例；实盘交易、提款、杠杆、衍生品、做空、私有交易接口以及 LLM 直接下单均不在项目范围内。历史审查中仍有流程限制，详见[发布说明](../releases/0.5.0.zh-CN.md)。
 
@@ -36,7 +36,7 @@ python ui/server.py
 
 打开 **http://127.0.0.1:8502/#watchlist/screening**。一次可筛查 1–50 个市场，搜索、筛选、查看检查项和输入哈希，或导出 CSV。示例包含候选、缺少研究、价差过宽、缺少卖价和过期快照。固定时间用于历史合成示例；不传 `--as-of` 时，旧快照会被标为过期。
 
-每次结果保存在 `data/reports/watchlist/screen-<id>/report.json` 与 `report.md`；`latest.json` 提供最新结果。筛查不使用 LLM、不打开交易数据库、不批准证据，也不创建订单。研究候选仍须经过后续风险审查与相应人工审批流程。输入格式、可选 Kalshi/Polymarket 公开快照和限制见[观察列表说明](../WATCHLIST_SCREENING.md)。
+每次结果保存在 `data/reports/watchlist/screen-<id>/report.json` 与 `report.md`；`latest.json` 提供最新结果。筛查不使用 LLM、不打开交易数据库、不批准证据，也不创建订单。研究候选仍须经过后续风险审查与相应人工审批流程。输入格式、可选 Kalshi/Polymarket 公开快照和限制见[观察列表说明](../reference/WATCHLIST_SCREENING.md)。
 
 仪表板仅监听回环地址，以只读方式读取 SQLite；没有数据库时会明确显示示例预览。端口占用时使用 `python ui/server.py --port 8503`。界面支持记录搜索、排序、筛选、CSV 导出、详情抽屉、证据/反证、审计关联，以及 Light、Dark、System 外观模式。背景动画可暂停，并遵循系统减少动态效果设置。
 
@@ -110,7 +110,7 @@ python scripts/check_release.py
 - 每笔模拟订单必须关联信号与已批准的风险决策。
 - LLM 不得创建订单；风险规则检查证据、置信度、价差、优势和禁用交易行为。
 
-历史审查记录不等于当前验收。后续开发及发布请遵循 [Agent 指南](../agents/README.zh-CN.md)和[版本规则](../VERSIONING.zh-CN.md)。
+历史审查记录不等于当前验收。后续开发及发布请遵循 [Agent 指南](../agents/README.zh-CN.md)和[版本规则](../maintainers/VERSIONING.zh-CN.md)。
 
 ## 新审批与证据流程
 
@@ -125,8 +125,8 @@ LMA_DB_PATH=data/reports/workflow-demo/demo.sqlite python ui/server.py --port 85
 
 ### 可验证的 NBA 概率流程
 
-[固定 NBA 概率协议](../NBA_PROBABILITY.md)说明公开深度筛选、冻结的比分模型、按时间分离的留出验证和当前比赛证据包。`scripts/build_nba_packet.py` 严格匹配赛前比赛与合同，保留全部来源以便离线复算，不批准订单。现有风控门槛、简报审核和逐意图审批继续生效；已开赛、来源过期、保守净优势不足均阻断执行。历史比分为事后采集，不代表交易回测盈利。
+[固定 NBA 概率协议](../reference/NBA_PROBABILITY.md)说明公开深度筛选、冻结的比分模型、按时间分离的留出验证和当前比赛证据包。`scripts/build_nba_packet.py` 严格匹配赛前比赛与合同，保留全部来源以便离线复算，不批准订单。现有风控门槛、简报审核和逐意图审批继续生效；已开赛、来源过期、保守净优势不足均阻断执行。历史比分为事后采集，不代表交易回测盈利。
 
 ## 香港赛马回放
 
-独立只读页面与原市场并行，分别保存历史投注、官方应得派彩和已兑奖现金。支持原始 T−10/T−3 快照与全场核验；缺失证据保持 UNKNOWN，未宣称赛马模型已验证，当前全部研究决策为 NO BET。参见[赛马指南](../HORSE_REPLAY.zh-CN.md)。
+独立只读页面与原市场并行，分别保存历史投注、官方应得派彩和已兑奖现金。支持原始 T−10/T−3 快照与全场核验；缺失证据保持 UNKNOWN，未宣称赛马模型已验证，当前全部研究决策为 NO BET。参见[赛马指南](../reference/HORSE_REPLAY.zh-CN.md)。
