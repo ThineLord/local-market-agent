@@ -4,7 +4,7 @@ Application releases use `vMAJOR.MINOR.PATCH`. See [version management](docs/VER
 
 ## Unreleased
 
-No changes recorded yet.
+- Make paper ledger opens/closes atomic and idempotent; isolate daily and sandbox dry-runs from the source database.
 
 ## 0.2.0 — 2026-11-09
 

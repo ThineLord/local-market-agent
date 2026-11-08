@@ -194,6 +194,8 @@ def _portfolio_snapshot_section(snapshot: PortfolioSnapshot | None) -> str:
 def _run_metadata_rows(metadata: dict[str, Any]) -> list[list[str]]:
     rows: list[list[str]] = []
     for field, label in [
+        ("dry_run", "Dry run"),
+        ("state_scope", "State scope"),
         ("market_source", "Market source"),
         ("data_mode", "Market data mode"),
         ("profitability_claims_meaningful", "Profitability claims meaningful"),

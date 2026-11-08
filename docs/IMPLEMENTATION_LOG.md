@@ -815,6 +815,13 @@
 - Re-ran the full offline suite in a temporary Python 3.12 environment after requesting hydration of iCloud-offloaded project files: **346 passed, 1 skipped**. `ruff check .`, `node --check` for `app.js`, `bull.js`, and `theme.js`, and the staged diff whitespace check passed. Reviewed all 11 publication files for credential patterns and forbidden database/credential file types; no findings.
 - Scope: publishes the existing local code and dated reports plus this validation receipt. Raw receipts, generated data, databases, and credentials remain excluded. Historical report limitations are preserved; no new public-market experiment, evidence approval, strategy/risk change, or trading action was performed.
 
+## Paper ledger atomicity and dry-run isolation (2026-10-26)
+
+- Addressed audit ENG-01/ENG-02 from baseline e04aaa0. Added connection-bound SQLite transactions for complete paper opens/closes, retry checks under the same write lock, consistent portfolio reads, and strict source-database isolation for daily/sandbox dry-runs. No schema migration; no safety-default changes.
+- Added 30 regression cases: per-write/commit failure rollback, interrupt/crash recovery, concurrent and repeated requests, database integrity, read-only compatibility, populated YES/NO dry-run hash/cash invariance, normal settlement and sandbox preview replay/equity.
+- Validation: `ruff check .` and `git diff --check` passed; full offline `pytest -q`: **376 passed, 1 skipped** (Python 3.13.15). Network test remains opt-in and skipped. Synthetic fixtures/mock orders and temporary SQLite only.
+- Design, limits and results: `docs/paper-ledger-fix/`. Independent final-SHA review and Draft PR receipts are separate delivery artifacts. No merge, deployment, production database changes or real orders.
+- Independent review caught a coverage-label gap in historical dry-run tests. Added synthetic evidence/liquidity and exact branch-status assertions; all 11 dry-run tests passed. A direct isolated probe also reproduced old dry-run settlement (2 positions closed) and verified zero closures after the fix.
 
 ## Version 0.2.0 — repository organization and release management (2026-11-09)
 
@@ -826,3 +833,8 @@
 - Scope/limits: documentation, release metadata/validation, and deterministic test repair. No external market collection, model call, trading-logic change, or data migration. Independent draft PR #4 (paper ledger atomicity/dry-run state) remains excluded, with known limitations disclosed in both release notes. Existing local databases, ignored reports, credentials, and original working-branch state are preserved.
 
 - Independent subagent review identified that relative links in notes would break when copied into a GitHub Release body. Converted both release-note files to immutable `blob/v0.2.0/` URLs and documented that requirement for future releases.
+
+### Ledger/dry-run refresh for 0.3 (2026-11-09)
+
+- Integrated the current main documentation/version baseline into PR #4, preserving both implementation-log histories. Added the fix to Unreleased.
+- Validation on the refreshed branch: `ruff check .` passed; full offline pytest **380 passed, 1 skipped**; release metadata and diff whitespace checks passed. Existing fault/commit/concurrency and populated dry-run regression coverage remains in place. No existing user database was opened or migrated.

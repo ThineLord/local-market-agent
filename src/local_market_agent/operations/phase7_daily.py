@@ -58,6 +58,39 @@ class Phase7DailyRunner:
         now: datetime | None = None,
         cli_arguments: dict[str, Any] | None = None,
     ) -> Phase7RunRecord:
+        if dry_run:
+            with self.repository.preview_copy() as repository:
+                preview = replace(
+                    self, repository=repository, report_dir=self.report_dir / "dry_run"
+                )
+                record = preview._run(
+                    dry_run=True, require_manual_approval=require_manual_approval,
+                    now=now, cli_arguments=cli_arguments,
+                )
+                # Persist the preview lineage beside its report, never in the ledger.
+                preview.report_dir.mkdir(parents=True, exist_ok=True)
+                (preview.report_dir / f"{record.run_id}.json").write_text(
+                    record.model_dump_json(indent=2) + "\n", encoding="utf-8"
+                )
+                manifest = repository.load_phase7_run_manifest(record.run_id)
+                if manifest is not None:
+                    (preview.report_dir / f"{record.run_id}_manifest.json").write_text(
+                        manifest.model_dump_json(indent=2) + "\n", encoding="utf-8"
+                    )
+                return record
+        return self._run(
+            dry_run=False, require_manual_approval=require_manual_approval,
+            now=now, cli_arguments=cli_arguments,
+        )
+
+    def _run(
+        self,
+        *,
+        dry_run: bool,
+        require_manual_approval: bool | None,
+        now: datetime | None,
+        cli_arguments: dict[str, Any] | None,
+    ) -> Phase7RunRecord:
         started_at = _as_utc(now or datetime.now(UTC))
         run_id = new_id("phase7_run")
         gate_config = _gate_config(
@@ -181,11 +214,13 @@ class Phase7DailyRunner:
                     status = Phase7RunStatus.COMPLETED
                     reasons = ["Paper run completed with simulated paper order."]
 
-            settled_position_ids = _close_historical_settlement_positions(
-                ledger=ledger,
-                market_id=snapshot.market.market_id,
-                settlement_outcome=market_data_audit.get("settlement_outcome"),
-            )
+            settled_position_ids = []
+            if not dry_run:
+                settled_position_ids = _close_historical_settlement_positions(
+                    ledger=ledger,
+                    market_id=snapshot.market.market_id,
+                    settlement_outcome=market_data_audit.get("settlement_outcome"),
+                )
             if settled_position_ids:
                 context["settled_position_ids"] = settled_position_ids
                 portfolio_after = ledger.snapshot_portfolio(marks)
@@ -203,6 +238,8 @@ class Phase7DailyRunner:
                 generated_at=started_at,
                 output_path=report_path,
                 run_metadata={
+                    "dry_run": dry_run,
+                    "state_scope": "temporary preview" if dry_run else "paper ledger",
                     "market_source": market_data_audit.get("market_source"),
                     "data_mode": market_data_audit.get("data_mode"),
                     "profitability_claims_meaningful": market_data_audit.get(
