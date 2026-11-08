@@ -25,3 +25,5 @@ lma paper-replay --intent-id INTENT_ID --db data/experiment.sqlite
 Settlement writes closing fills and a source/review receipt atomically. The same packet is idempotent; conflicting settlement packets are refused. A market recorded as settled cannot be opened again through the execution service. Existing historical-file sandbox settlement remains a local simulation facility.
 
 Run the documented isolated demo to obtain a complete concrete packet example. Demo receipts are explicitly synthetic and are not human review of public market evidence. A public sample with missing fields remains blocked; that is a useful validation result, not permission to fabricate the fields. Raw public receipts remain local generated artifacts, not bundled market datasets.
+
+The final settlement receipt URL must exactly match `resolution_source`. Its collection time must be at or after `resolved_at` and no later than the settled snapshot. When publication time is known, it must also be at or after resolution. A pre-resolution research article cannot substitute for the final source.

@@ -113,6 +113,13 @@ def load_packet(path, *, now=None):
             raise ValueError("Settlement market/source mismatch")
         if packet.snapshot.market.status != "settled" or utc(settlement.resolved_at) > utc(packet.snapshot.as_of):
             raise ValueError("Settlement requires a settled snapshot after resolution")
+        final_source = sources[settlement.source_id]
+        if final_source.url != packet.resolution_source:
+            raise ValueError("Final settlement source must match the declared resolution source")
+        if not utc(settlement.resolved_at) <= utc(final_source.retrieved_at) <= utc(packet.snapshot.as_of):
+            raise ValueError("Final settlement source must be collected after resolution and before the settled snapshot")
+        if final_source.published_at and utc(final_source.published_at) < utc(settlement.resolved_at):
+            raise ValueError("Final settlement publication predates resolution")
     return packet
 
 

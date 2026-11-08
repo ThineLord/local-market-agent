@@ -1,4 +1,3 @@
-import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 
@@ -6,7 +5,7 @@ import pytest
 from test_ledger_atomicity import business_hash
 
 from local_market_agent.config import Settings
-from local_market_agent.demo import demo_packet
+from local_market_agent.demo import demo_packet, demo_settlement
 from local_market_agent.evidence_packet import (
     packet_status,
     prepare_packet,
@@ -28,20 +27,7 @@ def reviewed(path, scope="research", now=NOW):
 
 
 def settlement_packet(path, now):
-    payload = json.loads(path.read_text())
-    payload["snapshot"]["market"]["status"] = "settled"
-    payload["snapshot"]["as_of"] = now.isoformat()
-    payload["snapshot"]["snapshot_id"] += "-settled"
-    payload["brief"] = None
-    payload["settlement"] = {"market_id": payload["snapshot"]["market"]["market_id"],
-        "outcome": "yes", "source_id": "market", "resolved_at": now.isoformat()}
-    # Distinct snapshot/source file preserves the original packet and its receipt.
-    source = path.parent / "settlement.json"
-    source.write_text(json.dumps(payload["snapshot"]))
-    payload["sources"][0].update(path=source.name, sha256=hashlib.sha256(source.read_bytes()).hexdigest(), retrieved_at=now.isoformat())
-    target = path.parent / "settlement-packet.json"
-    target.write_text(json.dumps(payload))
-    return target
+    return demo_settlement(path, now=now)
 
 
 def test_evidence_to_review_approval_execution_settlement(repo, tmp_path):
@@ -137,3 +123,29 @@ def test_workflow_displays_content_changes_as_blocked(repo, tmp_path):
     status = workflow_status(repo, now=NOW)
     assert status["intents"][0]["status"] == "blocked"
     assert "changed" in status["intents"][0]["reasons"][0]
+
+
+@pytest.mark.parametrize("mutation", ["wrong_source", "old_retrieval", "old_publication"])
+def test_old_research_cannot_be_used_as_final_settlement(repo, tmp_path, mutation):
+    path = demo_packet(tmp_path / "packet", now=NOW)
+    settings = Settings(db_path=repo.db_path)
+    intent = prepare_packet(repo, settings, path, reviewed(path), now=NOW)
+    service = PaperExecutionService(repo, settings)
+    service.approve(intent.intent_id, actor="synthetic", reason="test", now=NOW)
+    service.execute(intent.intent_id, now=NOW)
+    settled = settlement_packet(path, NOW)
+    payload = json.loads(settled.read_text())
+    final_source = next(s for s in payload["sources"] if s["source_id"] == "resolution")
+    if mutation == "wrong_source":
+        payload["settlement"]["source_id"] = "evidence-0"
+    elif mutation == "old_retrieval":
+        final_source["retrieved_at"] = (NOW-timedelta(minutes=1)).isoformat()
+        final_source["published_at"] = (NOW-timedelta(minutes=2)).isoformat()
+    else:
+        final_source["published_at"] = (NOW-timedelta(minutes=1)).isoformat()
+    settled.write_text(json.dumps(payload))
+    before = business_hash(repo)
+    with pytest.raises(ValueError, match="settlement"):
+        reviewed(settled, "settlement", now=NOW)
+    assert business_hash(repo) == before
+    assert repo.list_positions()[0].is_open

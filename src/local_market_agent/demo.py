@@ -59,11 +59,17 @@ def demo_settlement(packet_path, *, now=None):
     payload["snapshot"]["snapshot_id"] += "-settled"
     payload["brief"] = None
     payload["settlement"] = {"market_id": payload["snapshot"]["market"]["market_id"],
-        "outcome": "yes", "source_id": "market", "resolved_at": now.isoformat()}
+        "outcome": "yes", "source_id": "resolution", "resolved_at": now.isoformat()}
     source = path.parent / "settlement.json"
     with source.open("x") as handle:
         json.dump(payload["snapshot"], handle)
     payload["sources"][0].update(path=source.name, sha256=hashlib.sha256(source.read_bytes()).hexdigest(), retrieved_at=now.isoformat())
+    final_source = path.parent / "final-resolution.json"
+    with final_source.open("x") as handle:
+        json.dump(payload["settlement"], handle)
+    payload["sources"].append({"source_id": "resolution", "url": payload["resolution_source"],
+        "path": final_source.name, "sha256": hashlib.sha256(final_source.read_bytes()).hexdigest(),
+        "retrieved_at": now.isoformat(), "published_at": now.isoformat()})
     target = path.parent / "settlement-packet.json"
     with target.open("x") as handle:
         json.dump(payload, handle, indent=2)
