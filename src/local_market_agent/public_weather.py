@@ -97,7 +97,7 @@ def collect_weather_packet(output, market_id, *, allow_network=False):
         market_implied_probability=snapshot.market_implied_probability,
         recommended_action="observe", must_not_trade_reasons=[
             "No defensible calibrated probability estimate from the captured point weather data.",
-            "Automated observation draft requires source/brief review; no trade recommendation."],
+            "Observation-only draft has no trade recommendation; source review alone cannot authorize trading."],
         resolution_source=packet.resolution_source)
     packet.brief = brief
     path = output / "packet.json"
