@@ -16,6 +16,7 @@ from pydantic import Field, model_validator
 
 from local_market_agent.adapters import KalshiAdapter, PolymarketAdapter
 from local_market_agent.config import Settings
+from local_market_agent.risk.preflight import brief_checks, snapshot_checks
 from local_market_agent.schemas import MarketSnapshot, ResearchBrief
 from local_market_agent.schemas.models import StrictBaseModel, deterministic_model_context
 from local_market_agent.strategy import PredictionMarketEdgeStrategy
@@ -201,58 +202,18 @@ def _check(row: ScreenRow, code: str, passed: bool, message: str) -> None:
 
 
 def _screen_snapshot(row: ScreenRow, entry: WatchlistEntry, settings: Settings) -> None:
-    snapshot = row.snapshot
-    market = snapshot.market
-    _check(row, "market_identity", market.market_id == entry.market_id,
-           "The returned market must match the requested market ID.")
-    _check(row, "binary_market", market.market_type == "prediction" and
-           [outcome.lower() for outcome in market.outcomes] == ["yes", "no"],
-           "Only binary YES/NO prediction snapshots in YES-first order can be screened.")
-    _check(row, "market_open", market.status == "open",
-           "The market must be explicitly open.")
-    _check(row, "before_close", market.close_time is None or
-           _aware(market.close_time) > row.checked_at, "The market close time must not have passed.")
-    age = (row.checked_at - _aware(snapshot.as_of)).total_seconds()
-    _check(row, "snapshot_age", 0 <= age <= settings.risk_gates.max_market_data_age_seconds,
-           f"Observation age is {age:.0f}s; allowed range is 0–{settings.risk_gates.max_market_data_age_seconds}s.")
-    _check(row, "two_sided_quote", snapshot.spread is not None,
-           "Both bid and ask are required; last price is not a substitute.")
-    _check(row, "spread", snapshot.spread is not None and snapshot.spread <= settings.risk.max_spread,
-           f"Spread must be at most {settings.risk.max_spread:.2f}.")
-    _check(row, "liquidity", snapshot.liquidity is not None and
-           snapshot.liquidity >= settings.risk.min_liquidity_depth,
-           f"Reported liquidity must be at least {settings.risk.min_liquidity_depth:g}; unknown is not sufficient.")
-    _check(row, "market_probability", snapshot.market_implied_probability is not None,
-           "A market probability is required.")
-    if snapshot.best_bid is not None and snapshot.best_ask is not None:
-        probability = snapshot.market_implied_probability
-        _check(row, "probability_consistent", probability is not None and
-               snapshot.best_bid <= probability <= snapshot.best_ask,
-               "Market probability must lie within the observed bid/ask interval.")
+    for check in snapshot_checks(row.snapshot, entry.market_id, settings, row.checked_at):
+        _check(row, check.code, check.passed, check.message)
 
 
 def _screen_brief(row: ScreenRow, brief: ResearchBrief, settings: Settings) -> None:
     row.brief_id = brief.brief_id
-    snapshot = row.snapshot
-    _check(row, "brief_identity", brief.market_id == row.market_id and
-           brief.snapshot_id == snapshot.snapshot_id, "The brief must reference this exact market and snapshot.")
-    _check(row, "brief_time", _aware(snapshot.as_of) <= _aware(brief.created_at) <= row.checked_at,
-           "The brief must have been created between the snapshot and the review time.")
-    evidence = brief.evidence + brief.counter_evidence
-    _check(row, "evidence_count", len({item.evidence_id for item in evidence}) >= 2,
-           "At least two distinct evidence references are required.")
-    _check(row, "evidence_time", bool(evidence) and all(
-        item.published_at is not None and _aware(item.published_at) <= _aware(snapshot.as_of)
-        for item in evidence
-    ), "All evidence needs an explicit publication timezone and must predate the snapshot.")
-    _check(row, "brief_veto", not brief.must_not_trade_reasons,
-           "Any must-not-trade reason in the brief blocks a research candidate.")
-    _check(row, "resolution", bool(brief.resolution_source) and not brief.resolution_ambiguity,
-           "The brief must identify an unambiguous resolution source.")
+    for check in brief_checks(row.snapshot, brief, settings, row.checked_at):
+        _check(row, check.code, check.passed, check.message)
     if not all(check.passed for check in row.checks):
         return
     with deterministic_model_context(f"watchlist:{row.market_id}", row.checked_at):
-        signal = PredictionMarketEdgeStrategy(settings.risk).generate_signal(brief, snapshot)
+        signal = PredictionMarketEdgeStrategy(settings.risk).generate_signal(brief, row.snapshot)
     row.signal_action = signal.action.value
     row.edge = signal.edge
     row.strategy_reason = signal.rationale

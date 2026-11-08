@@ -80,8 +80,8 @@ def test_dry_run_existing_holdings_and_all_business_tables_unchanged(
     cash = synthetic_portfolio.snapshot_portfolio(persist=False).cash_balance
     record = runner.run(dry_run=True, now=NOW)
     expected_status = {
-        'approved': Phase7RunStatus.DRY_RUN,
-        'manual': Phase7RunStatus.PENDING_MANUAL_APPROVAL,
+        'approved': Phase7RunStatus.REJECTED,  # settled inputs cannot open new positions
+        'manual': Phase7RunStatus.REJECTED,
         'rejected': Phase7RunStatus.REJECTED,
         'failed': Phase7RunStatus.FAILED,
     }[mode]

@@ -28,6 +28,9 @@ class PredictionMarketEdgeStrategy:
         market_probability = snapshot.market_implied_probability
         agent_probability = brief.estimated_probability
 
+        if brief.must_not_trade_reasons:
+            return self._signal(brief, SignalAction.SKIP, agent_probability, market_probability,
+                                spread, None, "Research veto: " + "; ".join(brief.must_not_trade_reasons))
         if snapshot.liquidity is not None and snapshot.liquidity < self.config.min_liquidity_depth:
             return self._signal(
                 brief,

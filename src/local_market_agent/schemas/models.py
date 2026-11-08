@@ -406,6 +406,8 @@ class PortfolioSnapshot(StrictBaseModel):
     closed_positions: int = Field(ge=0)
     total_positions: int = Field(ge=0)
     market_values: dict[str, float] = Field(default_factory=dict)
+    day_start_equity: float | None = Field(default=None, gt=0)
+    peak_equity: float | None = Field(default=None, gt=0)
     execution_mode: ExecutionMode = ExecutionMode.PAPER
 
     @model_validator(mode="after")
@@ -522,3 +524,12 @@ class PerformanceReport(StrictBaseModel):
     open_positions: int = Field(ge=0)
     orders: int = Field(ge=0)
     notes: list[str] = Field(default_factory=list)
+
+
+class EquityBaseline(StrictBaseModel):
+    baseline_id: str
+    observed_at: datetime
+    day_start_equity: float = Field(gt=0)
+    peak_equity: float = Field(gt=0)
+    last_equity: float = Field(ge=0)
+    basis: str
