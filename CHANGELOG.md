@@ -4,6 +4,8 @@ Application releases use `vMAJOR.MINOR.PATCH`. See [version management](docs/VER
 
 ## Unreleased
 
+- Seal run and execution artifact contents, verify semantic links on replay, and return distinct CLI failure/rejection/pending statuses.
+
 - Require content-bound, expiring per-intent approvals across daily and legacy CLI execution, with atomic rechecks and fixture-only simulation receipts.
 
 - Share fail-closed screening/execution preflight and persist UTC equity baselines and peak drawdown; preserve real observation times and research vetoes.

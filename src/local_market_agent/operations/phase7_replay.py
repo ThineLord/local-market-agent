@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from local_market_agent.integrity import verify_run
 from local_market_agent.operations.phase7_manifest import sha256_file
 from local_market_agent.schemas import Phase7RunManifest, Phase7RunRecord, Phase7RunStatus
 from local_market_agent.schemas.models import ExecutionMode
@@ -67,6 +68,9 @@ class Phase7ReplayService:
             errors.append(f"Phase 7 run manifest not found: {manifest_key}")
         else:
             self._validate_manifest(record, manifest, errors, warnings)
+            integrity_errors, integrity_warnings = verify_run(self.repository, record, manifest)
+            errors.extend(integrity_errors)
+            warnings.extend(integrity_warnings)
 
         self._validate_references(record, artifacts, errors)
         report_path, report_checksum = self._validate_report(record, manifest, artifacts, errors)

@@ -856,3 +856,9 @@
 - Execution rechecks hard preflight, latest local observation, all held-market marks, current loss/exposure/limits under the same SQLite write lock as fills. Approval cannot override failures. Fixture/history no-manual simulations generate labelled receipts; fixture-only low-level simulation remains explicit for deterministic fault tests. Actor names are local audit labels, not authenticated multi-user identities.
 - Added bilingual workflow/migration documentation and approval CLI commands. Existing static legacy demo now correctly rejects stale/expired data; a dynamic synthetic CLI test verifies pending → approve → execute. Added expiry, rejection, future/stale data, changed inputs/config/live flags, concurrent retry, transaction-failure rollback, newer observation and unmarked holding regressions.
 - Validation: Ruff, version metadata, diff checks; full offline suite **404 passed, 1 skipped**. No user database, live endpoint or paid model call.
+
+### Replay content integrity and CLI contract (2026-11-09)
+
+- Sealed new daily run/manifest/reference payloads and separate execution receipts, including approval, opening fill and immutable position-opening projections. Replay detects same-ID content edits and inconsistent links; legitimate later closing is preserved. Legacy runs explicitly report unsealed limitations. These are local checks, not signed tamperproof records or model recomputation.
+- Added paper-replay and nonzero JSON outcomes for failed/rejected/pending/halted daily runs, invalid datasets, and aggregate sandbox outcomes. Risk-check now returns rejection status for failed hard checks.
+- Validation covers six artifact mutations, relationship inconsistencies despite refreshed hashes, legitimate close, legacy warnings, execution receipt/fill/approval changes, and real CLI error paths. Full offline suite **415 passed, 1 skipped**, Ruff/version/diff checks passed.

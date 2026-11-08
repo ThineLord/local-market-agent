@@ -557,3 +557,10 @@ class PaperApproval(StrictBaseModel):
     decision: str
     reason: str = Field(min_length=1)
     simulation: bool = False
+
+
+class PaperExecutionReceipt(StrictBaseModel):
+    intent_id: str
+    created_at: datetime
+    references: dict[str, str]
+    hashes: dict[str, str]
