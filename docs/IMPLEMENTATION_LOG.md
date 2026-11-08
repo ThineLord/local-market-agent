@@ -833,3 +833,8 @@
 - Scope/limits: documentation, release metadata/validation, and deterministic test repair. No external market collection, model call, trading-logic change, or data migration. Independent draft PR #4 (paper ledger atomicity/dry-run state) remains excluded, with known limitations disclosed in both release notes. Existing local databases, ignored reports, credentials, and original working-branch state are preserved.
 
 - Independent subagent review identified that relative links in notes would break when copied into a GitHub Release body. Converted both release-note files to immutable `blob/v0.2.0/` URLs and documented that requirement for future releases.
+
+### Ledger/dry-run refresh for 0.3 (2026-11-09)
+
+- Integrated the current main documentation/version baseline into PR #4, preserving both implementation-log histories. Added the fix to Unreleased.
+- Validation on the refreshed branch: `ruff check .` passed; full offline pytest **380 passed, 1 skipped**; release metadata and diff whitespace checks passed. Existing fault/commit/concurrency and populated dry-run regression coverage remains in place. No existing user database was opened or migrated.
