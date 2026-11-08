@@ -12,7 +12,7 @@ from scripts.check_release import ROOT, validate
 def release_tree(tmp_path: Path) -> Path:
     for name in (
         "pyproject.toml", "src/local_market_agent/__init__.py",
-        "README.md", "README.zh-CN.md", "CHANGELOG.md",
+        "README.md", "docs/README.zh-CN.md", "docs/CHANGELOG.md",
     ):
         target = tmp_path / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -42,6 +42,6 @@ def test_missing_chinese_notes_rejected(release_tree: Path) -> None:
 
 
 def test_stale_chinese_homepage_rejected(release_tree: Path) -> None:
-    (release_tree / "README.zh-CN.md").write_text("# Old homepage\n")
-    with pytest.raises(ValueError, match="README.zh-CN.md"):
+    (release_tree / "docs/README.zh-CN.md").write_text("# Old homepage\n")
+    with pytest.raises(ValueError, match="docs/README.zh-CN.md"):
         validate(release_tree)

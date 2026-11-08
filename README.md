@@ -1,18 +1,17 @@
 # Local Market Agent
 
-[English](README.md) · [简体中文](README.zh-CN.md)
+[简体中文](docs/README.zh-CN.md) · [User guide](docs/users/README.md) · [Agent guide](docs/agents/README.md) · [Releases](https://github.com/ThineLord/local-market-agent/releases)
 
-**For users:** start with the [user guide](docs/users/README.md).
+A local workspace for **public-market research, risk checks and paper trading**. Follow the evidence from a market snapshot through explicit approval to a simulated trade and its audit trail.
 
-**For agents:** read [AGENTS.md](AGENTS.md), then the [Agent guide](docs/agents/README.md).
+**Paper only.** No live orders. Demo results do not establish profitability.
 
-Local Market Agent connects **public market snapshots → research briefs → risk checks → explicit approval → simulated trades → local reports**. It is an offline-first Python workspace for inspecting evidence and testing paper workflows with deterministic fixtures and a local dashboard.
+![Watchlist screening with market checks and blocking reasons](docs/assets/watchlist.png)
+*The actual dashboard running deterministic synthetic examples; no live quotes or private trading records.*
 
-**Paper trading only.** This is an experimental research tool, not a live trading service. Demo results do not establish profitability or production readiness.
+## Try it locally
 
-## Start locally
-
-Use Python **3.11 or newer**. From the repository root:
+Python **3.11+** · no API key needed for the offline demo.
 
 ```bash
 python3 -m venv .venv
@@ -22,39 +21,36 @@ lma watchlist-screen --as-of 2026-06-05T00:02:00Z
 python ui/server.py
 ```
 
-Open **http://127.0.0.1:8502/#watchlist/screening**. This synthetic example runs without an API key or market-data request. The fixed time matches the historical fixtures; current-time checks correctly mark old data stale. Use `python ui/server.py --port 8503` if the port is occupied.
+Open [Watchlist → Screening](http://127.0.0.1:8502/#watchlist/screening). The fixed date matches the demo fixtures. If the port is occupied, add `--port 8503`.
 
-## Three steps
+## From evidence to a paper trade
 
-1. **Inspect a watchlist.** Compare snapshots, evidence gaps, and blocking checks.
-2. **Review and approve an intent.** Follow the [approval workflow](docs/users/PAPER_WORKFLOW.md); an LLM can draft research only.
-3. **Read the audit trail.** Inspect saved reports and simulated records in the local, read-only dashboard.
+**Screen → Research → Risk review → Explicit approval → Simulated fill → Audit**
 
-The separate [Hong Kong racing workspace](docs/HORSE_REPLAY.md) replays historical records and audits original pre-race snapshots. Missing evidence remains UNKNOWN; racing research currently returns NO BET.
+Compare markets and blocking reasons, inspect the source evidence, then approve an exact intent in the terminal. The dashboard is read-only. The [complete offline walkthrough](docs/users/README.md#approval-and-evidence-workflow) demonstrates the approval and audit trail.
 
-## Project layout
+<details>
+<summary>See the audit trail</summary>
 
-```text
-src/local_market_agent/   Python package and CLI
-ui/                      local dashboard and Streamlit interface
-data/fixtures/           committed deterministic examples
-data/                    ignored local databases and generated outputs
-tests/                   offline tests; optional network tests
-scripts/                 release checks and local research utilities
-docs/users/              English and Chinese user guides
-docs/agents/             English and Chinese Agent guides
-docs/releases/           notes for each published version
-docs/archive/            historical phase plans and reviews
-```
+![Linked research, signal, risk and simulated order records](docs/assets/audit.png)
 
-## Documentation and versions
+*Synthetic workflow only. Each record links to its supporting evidence.*
 
-- [User guide](docs/users/README.md) · [中文用户指南](docs/users/README.zh-CN.md)
-- [Agent guide](docs/agents/README.md) · [中文 Agent 指南](docs/agents/README.zh-CN.md)
-- [Documentation index](docs/README.md) · [Safety and risk](docs/SAFETY_AND_RISK.md)
-- [Changelog](CHANGELOG.md) · [Version policy](docs/VERSIONING.md)
-- [0.5.0 release notes](docs/releases/0.5.0.md) · [GitHub Releases](https://github.com/ThineLord/local-market-agent/releases)
+</details>
 
-The application version is **0.5.0**. Future releases use matching package versions, `vX.Y.Z` tags, release notes, and reviewed PRs. Codex coordinates the work; subagents review and merge. No bot delegation is used.
+Optional research workflows: [NBA probabilities](docs/reference/NBA_PROBABILITY.md) · [Hong Kong racing replay](docs/reference/HORSE_REPLAY.md). Racing inputs with missing evidence remain UNKNOWN; racing research currently returns NO BET.
 
-Defaults remain `REAL_MONEY_ENABLED=false`, `ALLOW_LIVE_ORDERS=false`, and `HUMAN_APPROVAL_REQUIRED=true`. Every paper order must reference a signal and an approved risk decision. Try the [complete isolated demo](docs/users/README.md#approval-and-evidence-workflow). See the release notes for migration and remaining limitations.
+## Find your way
+
+| Area | Contents |
+| --- | --- |
+| [`src/`](src/local_market_agent/) | Research, risk controls and paper ledger |
+| [`ui/`](ui/) | Local dashboard |
+| [`data/`](data/fixtures/) | Offline fixtures; generated data stays local |
+| [`scripts/`](scripts/) | Reproducible workflows and release checks |
+| [`tests/`](tests/) | Offline tests and optional network checks |
+| [`docs/`](docs/README.md) | User/agent guides, technical references and release history |
+
+Version **0.5.1** · [What's new](docs/releases/0.5.1.md) · [Changelog](docs/CHANGELOG.md)
+
+Contributing? Start with [AGENTS.md](AGENTS.md). Codex implements; subagents review and merge. Safety defaults remain `REAL_MONEY_ENABLED=false`, `ALLOW_LIVE_ORDERS=false`, `HUMAN_APPROVAL_REQUIRED=true`.
