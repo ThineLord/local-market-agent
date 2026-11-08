@@ -909,3 +909,5 @@ Prepared bilingual 0.3.1 release notes/homepages/changelog and detailed public-d
 ## 2026-11-09 — Bounded liquid public-market discovery
 
 Added opt-in, bounded NBA/NFL binary game-market screening with unchanged shared quote/depth thresholds. Captures source hashes/timestamps, retains failures, ranks passing market checks by conservative USD depth, and explicitly separates quote eligibility from pregame/model/order readiness. Refuses overwrite, duplicates, wrong series, repeated cursors and oversized responses. No credentials, ledger writes or order creation. Deterministic coverage and full Ruff/pytest/release checks run before the PR.
+
+Independent review identified that legacy aggregate liquidity could pass the discovery screen. Discovery now explicitly requires current best-quote size provenance; the legacy adapter remains backward compatible. Added a regression demonstrating a $10,000 aggregate-only response remains blocked.

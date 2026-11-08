@@ -44,13 +44,16 @@ def screen_public_markets(output, *, series="KXNBAGAME", max_pages=2, allow_netw
             seen_markets.add(ticker)
             try:
                 snapshot = KalshiAdapter().normalize_market(market).model_copy(update={"as_of": observed})
+                depth = liquidity_details(market)
                 checks = snapshot_checks(snapshot, ticker, settings, observed)
                 blockers = [f"{c.code}: {c.message}" for c in checks if not c.passed]
+                if depth["basis"] != "minimum_best_ask_buy_capacity_usd":
+                    blockers.append("Best-quote bid/ask sizes required; legacy aggregate liquidity is not executable depth")
                 if isinstance(market.get("notional_value_dollars"), bool) or float(market.get("notional_value_dollars", "nan")) != 1:
                     blockers.append("Only explicitly unit-dollar binary contracts are supported")
                 rows.append({"market_id": ticker, "event_ticker": market.get("event_ticker"),
                     "observed_at": observed.isoformat(), "snapshot": snapshot.model_dump(mode="json"),
-                    "liquidity": liquidity_details(market), "blockers": blockers,
+                    "liquidity": depth, "blockers": blockers,
                     "market_checks_passed": not blockers, "probability_ready": False,
                     "source_path": path.name})
             except (ValueError, TypeError, KeyError) as exc:

@@ -59,3 +59,15 @@ def test_public_screen_rejects_ambiguous_response(tmp_path, monkeypatch, mutatio
     monkeypatch.setattr("local_market_agent.public_screen.utc_now", lambda: NOW)
     with pytest.raises(ValueError):
         screen_public_markets(tmp_path / "scan", allow_network=True)
+
+
+def test_legacy_aggregate_liquidity_cannot_pass_depth_discovery(tmp_path, monkeypatch):
+    row = market()
+    del row["yes_bid_size_fp"]
+    del row["yes_ask_size_fp"]
+    row["liquidity_dollars"] = "10000"
+    monkeypatch.setattr("local_market_agent.public_screen.safe_get_json", lambda _: {"markets": [row]})
+    monkeypatch.setattr("local_market_agent.public_screen.utc_now", lambda: NOW)
+    report = screen_public_markets(tmp_path / "scan", allow_network=True)
+    assert report["eligible_count"] == 0
+    assert "legacy aggregate" in " ".join(report["markets"][0]["blockers"])
