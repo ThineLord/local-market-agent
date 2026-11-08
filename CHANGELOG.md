@@ -4,6 +4,8 @@ Application releases use `vMAJOR.MINOR.PATCH`. See [version management](docs/VER
 
 ## Unreleased
 
+- Add source-bound evidence packets, explicit research/settlement review, atomic settlement receipts, an isolated CLI demo and read-only next-step guidance.
+
 - Seal run and execution artifact contents, verify semantic links on replay, and return distinct CLI failure/rejection/pending statuses.
 
 - Require content-bound, expiring per-intent approvals across daily and legacy CLI execution, with atomic rechecks and fixture-only simulation receipts.

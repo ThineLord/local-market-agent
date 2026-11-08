@@ -27,3 +27,7 @@ data/source_exports/kalshi/*
 docs/reports/*_source_audit.md
 logs/
 *.log
+
+# Local browser validation artifacts
+.playwright-cli/
+output/
