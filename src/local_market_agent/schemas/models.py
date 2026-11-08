@@ -6,7 +6,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -564,3 +564,14 @@ class PaperExecutionReceipt(StrictBaseModel):
     created_at: datetime
     references: dict[str, str]
     hashes: dict[str, str]
+
+
+class SettlementReceipt(StrictBaseModel):
+    receipt_id: str
+    market_id: str
+    created_at: datetime
+    packet_hash: str
+    review: dict[str, Any]
+    outcome: Literal["yes", "no"]
+    source_hashes: dict[str, str]
+    closing_hashes: dict[str, str]

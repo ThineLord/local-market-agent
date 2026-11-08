@@ -45,6 +45,8 @@ class PaperExecutionService:
         now = utc(now)
         if self.settings.real_money_enabled or self.settings.allow_live_orders:
             raise ValueError("Live trading flags must remain disabled")
+        if self.repository.load_settlement_receipt(snapshot.market.market_id):
+            raise ValueError("Market already settled in this paper ledger")
         if not risk_decision.is_approved or risk_decision.signal_id != signal.signal_id:
             raise ValueError("An approved matching risk decision is required")
         if signal.brief_id != brief.brief_id or signal.market_id != snapshot.market.market_id:
@@ -198,6 +200,8 @@ class PaperExecutionService:
                     ["Already executed; no duplicate fill"],
                     order_id=existing[0].order_id,
                 )
+            if repo.load_settlement_receipt(snapshot.market.market_id):
+                return result("rejected", ["Market already settled in this paper ledger"])
             if approval is None:
                 return result(
                     "pending_manual_approval", ["Approve this intent explicitly before execution"]

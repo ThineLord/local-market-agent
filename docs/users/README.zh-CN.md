@@ -115,3 +115,14 @@ python scripts/check_release.py
 - LLM 不得创建订单；风险规则检查证据、置信度、价差、优势和禁用交易行为。
 
 历史审查记录不等于当前验收。后续开发及发布请遵循 [Agent 指南](../agents/README.zh-CN.md)和[版本规则](../VERSIONING.zh-CN.md)。
+
+## 新审批与证据流程
+
+参阅[逐意图审批](PAPER_WORKFLOW.zh-CN.md)和[证据包与结算](EVIDENCE_PACKETS.zh-CN.md)。以下命令在全新的输出目录运行完整合成演示，生成证据、审核、审批、成交、回放、结算和待审批样本；不打开现有用户数据库：
+
+```bash
+python scripts/demo_workflow.py --output data/reports/workflow-demo
+LMA_DB_PATH=data/reports/workflow-demo/demo.sqlite python ui/server.py --port 8503
+```
+
+如果目录已存在，请使用另一个新目录，保留历史演示记录。首页“Your next step”显示版本、观察时间、状态、原因及可复制命令。审批仍在终端明确完成。`lma workflow-status --db PATH` 提供同样的 JSON 状态。

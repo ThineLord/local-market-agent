@@ -62,6 +62,7 @@ def encode(value):
 
 
 def dashboard_payload(settings=None, screen_report_path=None) -> dict:
+    from local_market_agent.workflow import workflow_status
     settings = settings or load_settings()
     repository = DashboardRepository(settings.db_path)
     snapshots = repository.list_market_snapshots(limit=LIMIT)
@@ -87,6 +88,7 @@ def dashboard_payload(settings=None, screen_report_path=None) -> dict:
                     counts[table] = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
     return {
         **collections,
+        "workflow": workflow_status(repository, settings),
         "audit": _audit_chain_rows(repository),
         "operations": _phase7_operations_view_model(repository),
         "screening": screening_payload(screen_report_path),

@@ -361,6 +361,69 @@ def paper_replay(intent_id: Annotated[str, typer.Option()], db: Annotated[Path |
 
 
 @app.command()
+def packet_check(packet: Annotated[Path, typer.Option()]) -> None:
+    from local_market_agent.evidence_packet import packet_status
+    try:
+        typer.echo(json.dumps(packet_status(packet), sort_keys=True))
+    except (ValueError, OSError) as exc:
+        typer.echo(json.dumps({"valid": False, "errors": [str(exc)]}))
+        raise typer.Exit(2) from exc
+
+
+@app.command()
+def packet_review(
+    packet: Annotated[Path, typer.Option()], output: Annotated[Path, typer.Option()],
+    actor: Annotated[str, typer.Option()], reason: Annotated[str, typer.Option()],
+    scope: Annotated[str, typer.Option(help="research or settlement")] = "research",
+) -> None:
+    from local_market_agent.evidence_packet import review_packet
+    try:
+        review = review_packet(packet, actor=actor, reason=reason, scope=scope)
+        with output.open("x") as handle:
+            handle.write(review.model_dump_json(indent=2))
+        typer.echo(json.dumps({"status": "reviewed", "review_path": str(output), "review": review.model_dump(mode="json")}))
+    except (ValueError, OSError) as exc:
+        _paper_result({"status": "rejected", "reasons": [str(exc)]})
+
+
+@app.command()
+def packet_prepare(
+    packet: Annotated[Path, typer.Option()], review: Annotated[Path, typer.Option()],
+    db: Annotated[Path | None, typer.Option()] = None,
+) -> None:
+    from local_market_agent.evidence_packet import prepare_packet
+    settings = _settings(db)
+    try:
+        intent = prepare_packet(_repository(settings), settings, packet, review)
+        _paper_result({"status": "pending_manual_approval", "intent_id": intent.intent_id,
+            "reasons": ["Evidence review accepted; order approval still required"]})
+    except (ValueError, OSError) as exc:
+        _paper_result({"status": "rejected", "reasons": [str(exc)]})
+
+
+@app.command()
+def packet_settle(
+    packet: Annotated[Path, typer.Option()], review: Annotated[Path, typer.Option()],
+    db: Annotated[Path | None, typer.Option()] = None,
+) -> None:
+    from local_market_agent.evidence_packet import settle_packet
+    settings = _settings(db)
+    try:
+        receipt = settle_packet(_repository(settings), settings, packet, review)
+        _paper_result({"status": "completed", "settlement": receipt.model_dump(mode="json")})
+    except (ValueError, OSError) as exc:
+        _paper_result({"status": "rejected", "reasons": [str(exc)]})
+
+
+@app.command("workflow-status")
+def workflow_status_command(db: Annotated[Path | None, typer.Option()] = None) -> None:
+    """Read local workflow status and next commands."""
+    from local_market_agent.workflow import workflow_status
+    settings = _settings(db)
+    typer.echo(json.dumps(workflow_status(_repository(settings), settings), sort_keys=True))
+
+
+@app.command()
 def report_daily(
     db: Annotated[Path | None, typer.Option(help="SQLite database path.")] = None,
 ) -> None:

@@ -86,3 +86,11 @@ html{background:var(--paper)}
 .motion-settings{border-top:1px solid var(--line);padding-top:24px;margin-top:24px}
 @media(max-width:800px){.top-actions{gap:5px;flex-shrink:0}.theme-picker{padding:4px 5px}.theme-picker select{min-width:62px;font-size:10px}.theme-picker .icon{display:none}.topbar{gap:8px}.avatar{display:none}.breadcrumb{min-width:0}.mobile-brand{min-width:0;overflow:hidden;text-overflow:ellipsis}.mobile-menu{flex-shrink:0}}
 @media(max-width:480px){.theme-options{gap:8px}.theme-option{padding:8px}.theme-option-label{gap:5px;font-size:10px}.theme-option small{font-size:9px}.theme-swatch{height:53px}}
+
+.workflow-panel { margin-top:24px; padding:20px; }
+.workflow-steps { color:var(--muted); line-height:1.7; }
+.workflow-item { padding:16px 0; border-top:1px solid var(--line); }
+.workflow-item small { display:block; margin-top:8px; }
+.workflow-command { display:flex; gap:12px; align-items:center; }
+.workflow-command code { flex:1; min-width:0; overflow-wrap:anywhere; font-size:12px; }
+@media(max-width:600px) { .workflow-command { flex-direction:column; align-items:flex-start; } }

@@ -172,3 +172,14 @@ Optional network adapters are read-only and are covered by tests marked `network
 - All paper orders require a valid signal and approved risk decision.
 - The LLM provider can produce research JSON only. It cannot create orders.
 - Risk rules veto live trading attempts, leverage, derivatives, shorting, weak evidence, low confidence, wide spreads, and insufficient edge.
+
+## Approval and evidence workflow
+
+Read [per-intent approval](PAPER_WORKFLOW.md) and [evidence packets / settlement](EVIDENCE_PACKETS.md). Run a complete synthetic demonstration in a new output directory, producing source/review/approval/fill/replay/settlement receipts and a pending intent:
+
+```bash
+python scripts/demo_workflow.py --output data/reports/workflow-demo
+LMA_DB_PATH=data/reports/workflow-demo/demo.sqlite python ui/server.py --port 8503
+```
+
+Use a different new output directory if it already exists; previous records are preserved. The dashboard's “Your next step” shows version, observation time, status, reasons and copyable commands. Approval stays an explicit terminal action. `lma workflow-status --db PATH` returns the same read-only projection.

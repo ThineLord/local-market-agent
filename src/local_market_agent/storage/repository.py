@@ -30,6 +30,7 @@ from local_market_agent.schemas.models import (
     PaperApproval,
     PaperExecutionReceipt,
     PreparedExecution,
+    SettlementReceipt,
 )
 
 T = TypeVar("T", bound=BaseModel)
@@ -54,6 +55,7 @@ class SQLiteRepository:
         "equity_baselines": "baseline_id",
         "prepared_executions": "intent_id",
         "paper_execution_receipts": "intent_id",
+        "settlement_receipts": "receipt_id",
         "paper_approvals": "approval_id",
     }
 
@@ -425,3 +427,9 @@ class SQLiteRepository:
 
     def load_execution_receipt(self, intent_id: str) -> PaperExecutionReceipt | None:
         return self._load("paper_execution_receipts", "intent_id", intent_id, PaperExecutionReceipt)
+
+    def save_settlement_receipt(self, receipt: SettlementReceipt) -> None:
+        self._save("settlement_receipts", "receipt_id", receipt)
+
+    def load_settlement_receipt(self, market_id: str) -> SettlementReceipt | None:
+        return self._load("settlement_receipts", "receipt_id", market_id, SettlementReceipt)

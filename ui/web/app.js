@@ -79,13 +79,19 @@ const marketColumn={label:'Market',class:'title-cell',sortValue:r=>titleOf(r.mar
 const timeColumn=(key='created_at')=>({label:'Recorded',sortValue:r=>r[key]?+new Date(r[key]):null,render:r=>esc(datetime(r[key]))});
 const idColumn=key=>({label:'Reference',class:'mono',key,render:r=>esc(short(r[key]))});
 
+function workflowPanel(){
+  const w=data.workflow;if(!w)return '';
+  const rows=w.intents.slice(0,4);
+  return `<section class="panel workflow-panel" aria-label="Paper workflow"><div class="panel-head"><h2>Your next step</h2><small>v${esc(w.version)} · Read only</small></div><p class="workflow-steps">${w.steps.map(esc).join(' → ')}</p>${rows.length?rows.map(r=>`<article class="workflow-item"><div><strong>${esc(r.market_id)}</strong> ${badge(r.status)}<small>${r.simulation?'Synthetic / local simulation':'Public evidence · paper only'} · Observed ${esc(datetime(r.observed_at))}</small></div><p>${r.reasons.map(esc).join(' ')}</p><div class="workflow-command"><code>${esc(r.next_command)}</code><button class="button secondary" data-action="copy-command" data-command="${esc(r.next_command)}">Copy command</button></div></article>`).join(''):`<p>${esc(w.empty_message)}</p>`}<p class="muted">Approval is an explicit terminal step. This dashboard cannot submit or approve orders.</p></section>`;
+}
+
 function overview(){
   const markets=latestMarkets(),latest=markets[0],portfolio=data.portfolio_snapshots[0];
   return `<section class="hero"><span class="eyebrow">THE MARKET, IN PERSPECTIVE</span><h1>Insight.<br><em>In balance.</em></h1><p>A considered view of your research<br>and paper portfolio. Room to think.</p><a class="text-link" href="#watchlist">Explore your markets ${icon('arrow')}</a><div class="sculpture-caption">CHARGING BULL <em>A study in conviction</em></div></section>
   <div class="overview-metrics"><div class="overview-metric"><div class="metric-label">Markets followed</div><div class="metric-value">${data.meta.fixture_preview?'0':markets.length}<small>markets</small></div><div class="metric-note">${data.meta.fixture_preview?'Fixture preview available':'Unique markets in local records'}</div></div><div class="overview-metric"><div class="metric-label">Research library</div><div class="metric-value">${data.meta.counts.research_briefs||0}<small>briefs</small></div><div class="metric-note">Evidence-led local research</div></div><div class="overview-metric"><div class="metric-label">Paper portfolio</div><div class="metric-value">${portfolio?money(portfolio.portfolio_value):'—'}</div><div class="metric-note">${portfolio?`Recorded ${esc(date(portfolio.as_of))}`:'No portfolio snapshot yet'}</div></div></div>
   <div class="section-heading"><h2>On your radar</h2><a href="#watchlist">View watchlist ${icon('arrow')}</a></div>
   ${latest?`<a href="#watchlist" class="featured-market"><div class="market-monogram">m</div><div><h3>${esc(latest.market.title)}</h3><div class="subline">${badge(latest.market.platform,latest.market.platform==='fixture'?'gold':'')}<span>${esc(human(latest.market.status))}</span><span>·</span><span>${esc(date(latest.as_of))}</span></div></div><div class="featured-price"><strong>${pct(latest.market_implied_probability,0)}</strong><small>IMPLIED PROBABILITY</small></div>${icon('chevron')}</a>`:''}
-  <p class="overview-note">${data.meta.fixture_preview?'Preview from the deterministic fixture. No market snapshots have been saved.':'Showing saved observations. Fixture records are demonstrations; prices are not a live feed.'}</p>`;
+  ${workflowPanel()}<p class="overview-note">${data.meta.fixture_preview?'Preview from the deterministic fixture. No market snapshots have been saved.':'Showing saved observations. Fixture records are demonstrations; prices are not a live feed.'}</p>`;
 }
 function watchlist(){
   const tab=['history','screening'].includes(state.tab)?state.tab:'markets';
@@ -245,6 +251,7 @@ const narrowScreen=matchMedia('(max-width:800px)');
 function closeMenu(){$('#sidebar').classList.remove('open');$('#mobile-shade').classList.remove('active');$('#menu-toggle').setAttribute('aria-expanded','false');$('#sidebar').inert=narrowScreen.matches;}
 document.addEventListener('click',async event=>{
   const button=event.target.closest('[data-action]');if(!button)return;
+  if(button.dataset.action==='copy-command'){navigator.clipboard.writeText(button.dataset.command).then(()=>{button.textContent='Copied';}).catch(()=>{button.textContent='Select and copy the command';});return;}
   const {action,value}=button.dataset;
   if(action==='theme')window.lmaTheme.setPreference(value);
   if(action==='detail')showDetail(Number(value));
