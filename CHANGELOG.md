@@ -4,7 +4,16 @@ Application releases use `vMAJOR.MINOR.PATCH`. See [version management](docs/VER
 
 ## Unreleased
 
-- Add isolated Hong Kong historical ticket replay with receipt-bound public results, separate entitlement/cash accounting and explicit UNKNOWN pre-race evidence.
+No changes yet.
+
+## 0.5.0 — 2026-11-09
+
+- Add isolated Hong Kong historical replay with bounded public HKJC results/declarations, complete-field and source-chronology verification.
+- Separate provisional returns, official entitlements, redeemed cash and historical recommendations; report WIN/PLACE metrics and race-close drawdown without inventing backtest evidence.
+- Add source-bound T−10/T−3 transcription audits, descriptive full-field comparisons and explicit NO BET blockers. No validated racing probability model or order path is claimed.
+- Add a parallel read-only HKD dashboard, bilingual guides and deterministic synthetic import; preserve existing markets, safety defaults and local databases.
+
+[English release notes](docs/releases/0.5.0.md) · [中文发布说明](docs/releases/0.5.0.zh-CN.md)
 
 ## 0.4.0 — 2026-11-09
 

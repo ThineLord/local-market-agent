@@ -55,3 +55,7 @@ git diff --check
 review subagent 检查最终 diff、验证证据和对应 head commit 的 CI。问题修复后，由 subagent 将 PR 标为 ready，并以预期 head SHA 保护执行合并。如果分支规则要求当前账号无法提供的独立 GitHub approval，应报告阻塞，不绕过规则，也不将建议性审查称为正式批准。
 
 合并后，Codex 验证合并提交，依照[版本规则](../VERSIONING.zh-CN.md)发布版本标签与 GitHub Release，再核实链接。合并授权不扩展到无关 PR、数据采集或实盘交易。
+
+## 赛马研究边界
+
+导入赛马记录前阅读[赛马协议](../HORSE_REPLAY.zh-CN.md)。私人票据和快照保存在忽略路径，保留原始来源与导入时间，不得由赛果反推历史推荐。当前模块没有经过验证的赛马概率模型或下单适配器，研究决策均为 NO BET。可用性审核必须绑定证据，URL 或自填时间不能证明历史可用性。

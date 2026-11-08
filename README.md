@@ -30,6 +30,8 @@ Open **http://127.0.0.1:8502/#watchlist/screening**. This synthetic example runs
 2. **Review and approve an intent.** Follow the [approval workflow](docs/users/PAPER_WORKFLOW.md); an LLM can draft research only.
 3. **Read the audit trail.** Inspect saved reports and simulated records in the local, read-only dashboard.
 
+The separate [Hong Kong racing workspace](docs/HORSE_REPLAY.md) replays historical records and audits original pre-race snapshots. Missing evidence remains UNKNOWN; racing research currently returns NO BET.
+
 ## Project layout
 
 ```text
@@ -51,8 +53,8 @@ docs/archive/            historical phase plans and reviews
 - [Agent guide](docs/agents/README.md) · [中文 Agent 指南](docs/agents/README.zh-CN.md)
 - [Documentation index](docs/README.md) · [Safety and risk](docs/SAFETY_AND_RISK.md)
 - [Changelog](CHANGELOG.md) · [Version policy](docs/VERSIONING.md)
-- [0.4.0 release notes](docs/releases/0.4.0.md) · [GitHub Releases](https://github.com/ThineLord/local-market-agent/releases)
+- [0.5.0 release notes](docs/releases/0.5.0.md) · [GitHub Releases](https://github.com/ThineLord/local-market-agent/releases)
 
-The application version is **0.4.0**. Future releases use matching package versions, `vX.Y.Z` tags, release notes, and reviewed PRs. Codex coordinates the work; subagents review and merge. No bot delegation is used.
+The application version is **0.5.0**. Future releases use matching package versions, `vX.Y.Z` tags, release notes, and reviewed PRs. Codex coordinates the work; subagents review and merge. No bot delegation is used.
 
 Defaults remain `REAL_MONEY_ENABLED=false`, `ALLOW_LIVE_ORDERS=false`, and `HUMAN_APPROVAL_REQUIRED=true`. Every paper order must reference a signal and an approved risk decision. Try the [complete isolated demo](docs/users/README.md#approval-and-evidence-workflow). See the release notes for migration and remaining limitations.
