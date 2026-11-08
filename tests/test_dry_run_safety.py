@@ -21,7 +21,7 @@ NOW = datetime(2026, 6, 5, 16, tzinfo=UTC)
 
 @pytest.fixture
 def synthetic_portfolio(repo, brief, snapshot):
-    ledger = PaperLedger(repo)
+    ledger = PaperLedger(repo, simulation_only=True)
     for is_yes in [True, False]:
         research = brief if is_yes else brief.model_copy(update={
             'estimated_probability': 0.35,

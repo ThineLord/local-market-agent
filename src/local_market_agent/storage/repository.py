@@ -25,7 +25,7 @@ from local_market_agent.schemas import (
     RiskGateDecision,
     Signal,
 )
-from local_market_agent.schemas.models import EquityBaseline
+from local_market_agent.schemas.models import EquityBaseline, PaperApproval, PreparedExecution
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -47,6 +47,8 @@ class SQLiteRepository:
         "phase7_run_records": "run_id",
         "performance_reports": "report_id",
         "equity_baselines": "baseline_id",
+        "prepared_executions": "intent_id",
+        "paper_approvals": "approval_id",
     }
 
     def __init__(self, db_path: str | Path) -> None:
@@ -396,3 +398,18 @@ class SQLiteRepository:
 
     def save_equity_baseline(self, baseline: EquityBaseline) -> None:
         self._save("equity_baselines", "baseline_id", baseline)
+
+    def save_prepared_execution(self, value: PreparedExecution) -> None:
+        self._save("prepared_executions", "intent_id", value)
+
+    def load_prepared_execution(self, key: str) -> PreparedExecution | None:
+        return self._load("prepared_executions", "intent_id", key, PreparedExecution)
+
+    def list_prepared_executions(self) -> list[PreparedExecution]:
+        return self._list("prepared_executions", PreparedExecution)
+
+    def save_paper_approval(self, value: PaperApproval) -> None:
+        self._save("paper_approvals", "approval_id", value)
+
+    def list_paper_approvals(self) -> list[PaperApproval]:
+        return self._list("paper_approvals", PaperApproval)

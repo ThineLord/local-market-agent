@@ -31,6 +31,7 @@ ACTIONABLE_PAPER_BUYS = {
 class PaperLedger:
     repository: SQLiteRepository
     config: RiskConfig = RiskConfig()
+    simulation_only: bool = False
 
     def open_position(
         self,
@@ -67,6 +68,8 @@ class PaperLedger:
         risk_decision: RiskDecision | None,
         snapshot: MarketSnapshot,
     ) -> tuple[PaperOrder, PaperFill, Position]:
+        if not self.simulation_only or snapshot.market.platform != "fixture":
+            raise ValueError("Paper opens require PaperExecutionService with per-intent approval; low-level simulation is fixture-only")
         with self.repository.transaction() as repository:
             return replace(self, repository=repository)._open_in_transaction(
                 signal=signal, risk_decision=risk_decision, snapshot=snapshot

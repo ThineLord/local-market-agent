@@ -533,3 +533,27 @@ class EquityBaseline(StrictBaseModel):
     peak_equity: float = Field(gt=0)
     last_equity: float = Field(ge=0)
     basis: str
+
+
+class PreparedExecution(StrictBaseModel):
+    intent_id: str
+    created_at: datetime
+    intent: PaperOrderIntent
+    snapshot_id: str
+    brief_id: str
+    risk_decision_id: str
+    content_hash: str
+    config: dict[str, Any]
+    simulation: bool = False
+
+
+class PaperApproval(StrictBaseModel):
+    approval_id: str = Field(default_factory=lambda: new_id("approval"))
+    intent_id: str
+    content_hash: str
+    actor: str = Field(min_length=1)
+    created_at: datetime
+    expires_at: datetime
+    decision: str
+    reason: str = Field(min_length=1)
+    simulation: bool = False

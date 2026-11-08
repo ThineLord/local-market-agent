@@ -155,3 +155,16 @@ def preflight(
     return snapshot_checks(snapshot, brief.market_id, settings, now) + brief_checks(
         snapshot, brief, settings, now
     )
+
+
+def portfolio_marks(repository, snapshot, settings, now):
+    """Refuse cost-basis estimates when a held market has no fresh trusted quote."""
+    marks = {snapshot.market.market_id: snapshot.market_implied_probability}
+    for position in repository.list_positions():
+        if not position.is_open or position.market_id in marks:
+            continue
+        candidates = repository.list_market_snapshots(position.market_id, limit=1)
+        if not candidates or any(not c.passed for c in snapshot_checks(candidates[0], position.market_id, settings, now)):
+            raise ValueError(f"Fresh valid mark required for held market: {position.market_id}")
+        marks[position.market_id] = candidates[0].market_implied_probability
+    return marks

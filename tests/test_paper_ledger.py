@@ -21,7 +21,7 @@ def test_paper_order_position_lifecycle(repo, brief, snapshot):
     repo.save_signal(signal)
     repo.save_risk_decision(decision)
 
-    ledger = PaperLedger(repo)
+    ledger = PaperLedger(repo, simulation_only=True)
     order = ledger.create_order(signal=signal, risk_decision=decision, snapshot=snapshot)
     assert order.risk_decision_id == decision.risk_decision_id
     assert order.side == OrderSide.BUY_YES
@@ -54,7 +54,7 @@ def test_vetoed_decision_cannot_create_order(repo, brief, snapshot):
     decision = RiskEngine().evaluate_signal(signal)
     assert decision.status == RiskStatus.VETOED
     with pytest.raises(ValueError, match="approved risk decision"):
-        PaperLedger(repo).create_order(signal=signal, risk_decision=decision, snapshot=snapshot)
+        PaperLedger(repo, simulation_only=True).create_order(signal=signal, risk_decision=decision, snapshot=snapshot)
 
 
 def test_paper_buy_no_order_uses_no_side(repo, brief, snapshot):
@@ -71,7 +71,7 @@ def test_paper_buy_no_order_uses_no_side(repo, brief, snapshot):
     repo.save_signal(signal)
     repo.save_risk_decision(decision)
 
-    order = PaperLedger(repo).create_order(
+    order = PaperLedger(repo, simulation_only=True).create_order(
         signal=signal,
         risk_decision=decision,
         snapshot=snapshot,
@@ -87,7 +87,7 @@ def test_open_position_returns_position_and_persists_a_fill(repo, brief, snapsho
     repo.save_signal(signal)
     repo.save_risk_decision(decision)
 
-    position = PaperLedger(repo).open_position(
+    position = PaperLedger(repo, simulation_only=True).open_position(
         signal=signal,
         risk_decision=decision,
         snapshot=snapshot,
@@ -105,7 +105,7 @@ def test_portfolio_snapshot_tracks_cash_pnl_and_fees(repo, brief, snapshot):
     repo.save_signal(signal)
     repo.save_risk_decision(decision)
 
-    ledger = PaperLedger(repo)
+    ledger = PaperLedger(repo, simulation_only=True)
     position = ledger.open_position(signal=signal, risk_decision=decision, snapshot=snapshot)
     mark = 0.60
     snapshot_record = ledger.snapshot_portfolio({snapshot.market.market_id: mark})

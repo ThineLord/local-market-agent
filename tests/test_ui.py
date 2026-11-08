@@ -27,7 +27,7 @@ def test_streamlit_audit_chain_rows_include_linked_objects(
     assert decision.is_approved
     repo.save_signal(signal)
     repo.save_risk_decision(decision)
-    order = PaperLedger(repo).create_order(
+    order = PaperLedger(repo, simulation_only=True).create_order(
         signal=signal,
         risk_decision=decision,
         snapshot=snapshot,
