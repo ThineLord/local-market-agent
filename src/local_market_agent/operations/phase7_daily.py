@@ -17,7 +17,7 @@ from local_market_agent.paper import PaperLedger
 from local_market_agent.reporting import Phase7DailyReportGenerator
 from local_market_agent.risk import RiskEngine, RiskGateEvaluator
 from local_market_agent.risk.equity import loss_metrics, observe_equity
-from local_market_agent.risk.preflight import preflight
+from local_market_agent.risk.preflight import preflight, snapshot_checks
 from local_market_agent.schemas import (
     MarketSnapshot,
     PaperOrder,
@@ -177,14 +177,17 @@ class Phase7DailyRunner:
             )
             context["signal_id"] = signal.signal_id
             self.repository.save_signal(signal)
-            marks = _marks_from_snapshot(snapshot)
-            portfolio_before = observe_equity(
-                self.repository, ledger.snapshot_portfolio(marks, persist=False), started_at
-            )
-            self.repository.save_portfolio_snapshot(portfolio_before)
             checks = preflight(snapshot, brief, self.settings, started_at)
+            if market_id is not None:
+                checks.extend(snapshot_checks(snapshot, market_id, self.settings, started_at))
             failed_checks = [check for check in checks if not check.passed]
             context["preflight_failures"] = [check.code for check in failed_checks]
+            # Rejected observations must never change persistent risk history.
+            marks = {} if failed_checks else _marks_from_snapshot(snapshot)
+            portfolio_before = ledger.snapshot_portfolio(marks, persist=False)
+            if not failed_checks:
+                portfolio_before = observe_equity(self.repository, portfolio_before, started_at)
+            self.repository.save_portfolio_snapshot(portfolio_before)
             risk_decision = RiskEngine(self.settings.risk).evaluate_signal(
                 signal,
                 **loss_metrics(portfolio_before),

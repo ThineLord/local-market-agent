@@ -98,3 +98,28 @@ def test_daily_runner_receives_actual_loss_metrics(repo, tmp_path, monkeypatch):
     assert calls[0]["daily_loss_pct"] == pytest.approx(1 / 6)
     assert calls[0]["total_drawdown_pct"] == pytest.approx(1 / 6)
     assert record.paper_order_id is None
+
+
+@pytest.mark.parametrize("bad_input", ["stale", "future", "identity"])
+def test_rejected_observation_does_not_poison_equity(repo, tmp_path, monkeypatch, bad_input):
+    from dataclasses import replace
+
+    from local_market_agent.operations import phase7_daily
+    settings = Settings(db_path=repo.db_path, risk_gates=RiskGateConfig(require_manual_approval=False))
+    runner = Phase7DailyRunner(repo, settings, report_dir=tmp_path / "reports")
+    assert runner.run(now=NOW).status == "completed"
+    before = repo.list_equity_baselines()
+    original = phase7_daily.load_phase7_market_inputs
+    def invalid(**kwargs):
+        inputs = original(**kwargs)
+        offset = timedelta(days=-5 if bad_input == "stale" else 5)
+        snap = inputs.snapshot.model_copy(update={"as_of": NOW + offset, "last_price": .99})
+        if bad_input == "identity":
+            snap = inputs.snapshot.model_copy(update={"market": inputs.snapshot.market.model_copy(update={"market_id": "wrong-market"})})
+        return replace(inputs, snapshot=snap)
+    monkeypatch.setattr(phase7_daily, "load_phase7_market_inputs", invalid)
+    runner.market_id = "demo-election-turnout-2026"
+    record = runner.run(now=NOW + timedelta(minutes=1))
+    assert record.status == "rejected"
+    assert repo.list_equity_baselines() == before
+    assert repo.count("paper_orders") == 1

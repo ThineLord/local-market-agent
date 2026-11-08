@@ -847,3 +847,5 @@
 - Follow-up PR will route legacy CLI and per-intent approval through the same execution authorization service. No live trading or user database changes.
 
 - Final portfolio persistence check exposed equal observation timestamps selecting the earlier state. Added insertion-order tie-breaking to repository reads; the dashboard now selects the final state for a deterministic run timestamp.
+
+- Independent review found rejected quote observations could poison persistent equity baselines. Moved preflight ahead of observation persistence, added requested market identity checks and three populated-holding regressions (stale/future/mismatched market). Final full offline validation: **391 passed, 1 skipped**.
