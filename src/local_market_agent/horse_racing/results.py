@@ -8,6 +8,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
 
 import httpx
 from bs4 import BeautifulSoup
@@ -182,6 +183,12 @@ def parse_starters(raw, day, course, races):
         info = text(section.select_one("h3.raceInfo"))
         if not info.startswith(f"RACE {race} - "):
             raise ValueError("Declaration race mismatch")
+        start = re.match(rf"RACE {race} - (\d{{1,2}}:\d{{2}} [AP]M)\b", info)
+        if not start:
+            raise ValueError("Scheduled race time required for result chronology")
+        scheduled = datetime.combine(
+            day, datetime.strptime(start[1], "%I:%M %p").time(), ZoneInfo("Asia/Hong_Kong")
+        )
         table = section.select_one("table.tbRace")
         if table is None:
             raise ValueError("Declaration table missing")
@@ -243,6 +250,7 @@ def parse_starters(raw, day, course, races):
         output[str(race)] = {
             "race_no": race,
             "race_info": info,
+            "scheduled_start": scheduled.isoformat(),
             "runners": runners,
             "declared_count": len(runners),
             "source_url": starters_url(day, course),
@@ -368,7 +376,10 @@ def load_results(directory, *, now=None):
     ]
     declarations = parse_starters(raw_by_id["starters"], day, course, count)
     for race in parsed:
-        declared = {r["horse_no"]: r for r in declarations[str(race.race_no)]["runners"]}
+        declaration = declarations[str(race.race_no)]
+        if race.retrieved_at <= datetime.fromisoformat(declaration["scheduled_start"]):
+            raise ValueError("Final result receipt cannot predate scheduled race start")
+        declared = {r["horse_no"]: r for r in declaration["runners"]}
         actual = {r.horse_no: r for r in race.runners}
         if actual.keys() != declared.keys():
             race.blockers.append(

@@ -382,3 +382,12 @@ def test_truncated_place_pool_cannot_turn_winner_into_loss(tmp_path):
     record.races[1].tickets[1].horse_no = 3
     report = replay_history(record, official)
     assert report["races"][1]["tickets"][1]["official_outcome"] == "UNKNOWN"
+
+
+def test_result_receipt_cannot_precede_race_start_on_same_day(tmp_path):
+    directory = tmp_path / "official"
+    manifest = source_directory(directory)
+    manifest["sources"][0]["retrieved_at"] = "2026-01-01T00:00:00+00:00"
+    (directory / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="predate scheduled"):
+        load_results(directory)
