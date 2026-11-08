@@ -278,6 +278,9 @@ def risk_check(
         )
     )
 
+    if not decision.is_approved:
+        raise typer.Exit(3)
+
 
 def _paper_result(payload):
     typer.echo(json.dumps(payload, sort_keys=True))
@@ -345,6 +348,16 @@ def paper_status(db: Annotated[Path | None, typer.Option()] = None) -> None:
     repo = _repository(_settings(db))
     typer.echo(json.dumps({"intents": [x.model_dump(mode="json") for x in repo.list_prepared_executions()],
         "approvals": [x.model_dump(mode="json") for x in repo.list_paper_approvals()]}, sort_keys=True))
+
+
+@app.command()
+def paper_replay(intent_id: Annotated[str, typer.Option()], db: Annotated[Path | None, typer.Option()] = None) -> None:
+    """Verify an executed intent's sealed inputs, approval and opening transition."""
+    from local_market_agent.integrity import verify_execution
+    result = verify_execution(_repository(_settings(db)), intent_id)
+    typer.echo(json.dumps(result, sort_keys=True))
+    if not result["ok"]:
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -476,6 +489,9 @@ def validate_historical_dataset_command(
             sort_keys=True,
         )
     )
+
+    if not result.valid:
+        raise typer.Exit(2)
 
 
 @app.command("audit-calibration-dataset")
@@ -1227,6 +1243,10 @@ def phase7_run_daily(
         )
     )
 
+    code = {"completed": 0, "dry_run": 0, "rejected": 3, "pending_manual_approval": 4, "halted": 5, "failed": 1}[record.status]
+    if code:
+        raise typer.Exit(code)
+
 
 @app.command("phase7-replay")
 def phase7_replay(
@@ -1368,6 +1388,10 @@ def phase7_sandbox_run(
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.echo(json.dumps(result.summary, sort_keys=True))
+    counts = result.summary.get("status_counts", {})
+    for status, code in [("failed", 1), ("halted", 5), ("rejected", 3), ("pending_manual_approval", 4), ("pending", 4)]:
+        if counts.get(status, 0):
+            raise typer.Exit(code)
 
 
 @app.command("phase7-research-quality-daily-compare")

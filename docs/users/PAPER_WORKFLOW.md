@@ -20,3 +20,9 @@ Local actor names are audit labels, not authenticated identities. This is a trus
 UTC risk sessions use the previous session's last observed equity as the next day's start. The first observation bootstraps from initial capital. Peak means the highest valid observed equity, not a continuously sampled market peak. All open holdings need fresh valid quotes for execution; rejected observations cannot update risk history. Backdated runs need a separate database.
 
 CLI approval/execution returns JSON and exit codes: `0` approved/completed, `3` rejected, `4` awaiting approval, `5` risk halt. Invalid arguments use `2`; unexpected failures use nonzero. Pending and rejected runs are not completed orders.
+
+## Verify and automate
+
+`paper-replay --intent-id ID --db PATH` verifies the executed intent's content hashes and signal/risk/approval/order/fill/position links. `phase7-replay --run-id ID --db PATH` also checks the run, manifest, research, portfolio and report. Legitimate position closing does not invalidate the immutable opening record. Older unsealed runs explicitly warn that content integrity is unavailable. These checks do not rerun a model/strategy or provide cryptographic tamper resistance.
+
+Daily CLI exit codes follow the approval/execution contract above; dry-run success is 0 and a failed run is 1. Dataset validation uses 2 for invalid data, while still returning its JSON report. Sandbox runs aggregate failures with priority failed (1), halted (5), rejected (3), pending (4), otherwise 0; a completed batch containing rejected days is therefore nonzero. Inspect `status_counts` and reasons rather than treating all nonzero statuses as a crash.

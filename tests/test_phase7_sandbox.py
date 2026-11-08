@@ -56,7 +56,7 @@ def test_phase7_sandbox_cli_runs_seven_days(tmp_path):
         ],
     )
 
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 3, result.output
     payload = json.loads(result.output)
     assert payload["simulated_days"] == 7
     assert payload["market_source"] == "fixture"

@@ -22,7 +22,7 @@ def test_cli_offline_demo_chain(tmp_path):
     assert json.loads(result.output)["recommended_action"] == "paper_buy_yes"
 
     result = runner.invoke(app, ["risk-check", "--db", str(db)])
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 3, result.output
     risk_payload = json.loads(result.output)
     assert risk_payload["signal_action"] == "paper_buy_yes"
     assert risk_payload["risk_status"] == "vetoed"
@@ -310,3 +310,16 @@ def test_cli_market_data_audit_uses_selected_historical_market(tmp_path):
         "selected historical market" in warning.lower()
         for warning in payload["historical_dataset_warnings"]
     )
+
+
+def test_failed_daily_and_invalid_dataset_are_nonzero_json(tmp_path):
+    runner = CliRunner()
+    failed = runner.invoke(app, ["phase7-run-daily", "--fixture", str(tmp_path / "missing.json"),
+        "--db", str(tmp_path / "failed.sqlite"), "--report-dir", str(tmp_path / "reports")])
+    assert failed.exit_code == 1, failed.output
+    assert json.loads(failed.output)["status"] == "failed"
+    assert json.loads(failed.output)["reasons"]
+    invalid = runner.invoke(app, ["validate-historical-dataset", "--historical-file",
+        "data/fixtures/historical_validator/invalid_future_evidence.jsonl", "--output-dir", str(tmp_path / "validation")])
+    assert invalid.exit_code == 2, invalid.output
+    assert json.loads(invalid.output)["valid"] is False

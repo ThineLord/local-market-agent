@@ -7,6 +7,7 @@ from typing import Any
 
 from local_market_agent.agents import ResearchBriefGenerator
 from local_market_agent.config import RiskGateConfig, Settings
+from local_market_agent.integrity import seal_run
 from local_market_agent.llm import build_llm_provider, llm_provider_audit
 from local_market_agent.operations.phase7_manifest import build_phase7_run_manifest
 from local_market_agent.operations.phase7_market_data import (
@@ -351,6 +352,7 @@ class Phase7DailyRunner:
                     "settled_position_ids": context.get("settled_position_ids", []),
                 },
             )
+            manifest = seal_run(self.repository, record, manifest)
             self.repository.save_phase7_run_manifest(manifest)
             self.repository.save_phase7_run_record(record)
             return record
@@ -407,6 +409,7 @@ class Phase7DailyRunner:
                     "market_data": market_data_audit,
                 },
             )
+            manifest = seal_run(self.repository, record, manifest)
             self.repository.save_phase7_run_manifest(manifest)
             self.repository.save_phase7_run_record(record)
             return record

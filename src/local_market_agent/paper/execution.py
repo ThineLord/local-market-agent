@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 from local_market_agent.config import Settings
+from local_market_agent.integrity import seal_execution
 from local_market_agent.paper.ledger import PaperLedger, _paper_side_and_limit
 from local_market_agent.risk import RiskEngine, RiskGateEvaluator
 from local_market_agent.risk.equity import loss_metrics, observe_equity_in_transaction
@@ -244,9 +245,10 @@ class PaperExecutionService:
             )
             if gate.status != "approved":
                 return result(str(gate.status), gate.reasons)
-            order, _, _ = ledger._open_in_transaction(
+            order, fill, position = ledger._open_in_transaction(
                 signal=signal, risk_decision=risk, snapshot=snapshot
             )
+            seal_execution(repo, prepared, approval, gate, order, fill, position, now)
             repo.save_portfolio_snapshot(
                 observe_equity_in_transaction(
                     repo, ledger._snapshot_in_transaction(marks, persist=False), now

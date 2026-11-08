@@ -25,7 +25,12 @@ from local_market_agent.schemas import (
     RiskGateDecision,
     Signal,
 )
-from local_market_agent.schemas.models import EquityBaseline, PaperApproval, PreparedExecution
+from local_market_agent.schemas.models import (
+    EquityBaseline,
+    PaperApproval,
+    PaperExecutionReceipt,
+    PreparedExecution,
+)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -48,6 +53,7 @@ class SQLiteRepository:
         "performance_reports": "report_id",
         "equity_baselines": "baseline_id",
         "prepared_executions": "intent_id",
+        "paper_execution_receipts": "intent_id",
         "paper_approvals": "approval_id",
     }
 
@@ -413,3 +419,9 @@ class SQLiteRepository:
 
     def list_paper_approvals(self) -> list[PaperApproval]:
         return self._list("paper_approvals", PaperApproval)
+
+    def save_execution_receipt(self, receipt: PaperExecutionReceipt) -> None:
+        self._save("paper_execution_receipts", "intent_id", receipt)
+
+    def load_execution_receipt(self, intent_id: str) -> PaperExecutionReceipt | None:
+        return self._load("paper_execution_receipts", "intent_id", intent_id, PaperExecutionReceipt)
