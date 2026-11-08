@@ -882,3 +882,10 @@
 - Final release validation: **433 passed, 1 skipped**; Ruff, v0.3.0 metadata, three JavaScript syntax checks, diff checks and 157 local Markdown targets passed. Actual demo uses 15 CLI calls; browser navigation covered all ten pages with no overflow, desktop/390px and command copying. Full real-source results and remaining limits are in docs/reports/0.3.0-validation.zh-CN.md.
 
 - Final 320px dark screenshot exposed low-contrast browser-default copy buttons. Applied existing surface/ink/border palette tokens to the workflow copy controls; desktop/mobile layout and copy behavior remain unchanged.
+
+
+## 2026-11-09 — Public Kalshi liquidity normalization
+
+Current public market responses omit legacy liquidity but include fixed-point best bid/ask contract sizes. Normalize conservatively to USD: `min(YES ask × YES ask size, (1 − YES bid) × YES bid size)`. This is capacity to buy at the best quotes on both outcome sides, not aggregate order-book liquidity, volume, or open interest. Missing sides remain unknown; zero stays zero; malformed/nonfinite sizes are rejected. Legacy cents are divided by 100, dollar fields take precedence. No snapshot schema change, preserving existing sealed input shapes. Preflight now reports actual versus required liquidity.
+
+Validation: deterministic adapter regressions cover fractional sizes, zero/missing/invalid depth, units and no volume substitution; full Ruff/pytest/release checks recorded in the PR. Read-only probe of `KXHIGHNY-26NOV09-T57` observed YES ask 0.13 × 10 = $1.30 and NO ask 0.88 × 30 = $26.40, correctly below the default $100 minimum. Public raw responses remain local ignored artifacts.

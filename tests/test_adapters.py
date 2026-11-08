@@ -80,3 +80,29 @@ def test_kalshi_fetch_snapshot_is_read_only(monkeypatch, tmp_path):
     assert snapshot.best_ask == 0.43
     assert calls == [f"{KalshiAdapter.BASE_URL}/markets/KXTEST"]
     assert all("/order" not in url for url in calls)
+
+
+@pytest.mark.parametrize(("bid_size", "ask_size", "expected"), [
+    ("30.00", "10.00", 1.3), ("300.50", "1000.00", 130.0),
+    ("0.00", "1000.00", 0), (None, "1000.00", None),
+])
+def test_kalshi_current_best_ask_capacity(bid_size, ask_size, expected):
+    payload = {"ticker": "DEPTH", "yes_bid_dollars": "0.1200", "yes_ask_dollars": "0.1300",
+               "yes_bid_size_fp": bid_size, "yes_ask_size_fp": ask_size,
+               "volume_fp": "999999", "open_interest_fp": "999999", "liquidity_dollars": "999999"}
+    snapshot = KalshiAdapter().normalize_market(payload)
+    assert snapshot.liquidity == expected
+
+
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-1", "broken", True])
+def test_kalshi_rejects_invalid_depth(value):
+    with pytest.raises(ValueError):
+        KalshiAdapter().normalize_market({"ticker": "BAD", "yes_bid_size_fp": value})
+
+
+def test_kalshi_legacy_liquidity_units_and_missing_depth():
+    adapter = KalshiAdapter()
+    assert adapter.normalize_market({"ticker": "X", "liquidity": 12345}).liquidity == 123.45
+    assert adapter.normalize_market({"ticker": "X", "liquidity_dollars": "123.45", "liquidity": 999}).liquidity == 123.45
+    assert adapter.normalize_market({"ticker": "X", "volume_fp": "99999", "open_interest_fp": "99999"}).liquidity is None
+    assert adapter.normalize_market({"ticker": "X", "liquidity_dollars": None, "liquidity": 999}).liquidity is None

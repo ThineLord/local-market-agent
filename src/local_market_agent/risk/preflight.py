@@ -83,7 +83,7 @@ def snapshot_checks(
     check(
         "liquidity",
         snapshot.liquidity is not None and snapshot.liquidity >= settings.risk.min_liquidity_depth,
-        f"Reported liquidity must be at least {settings.risk.min_liquidity_depth:g}; unknown is not sufficient.",
+        f"Liquidity is {snapshot.liquidity if snapshot.liquidity is not None else 'unknown'}; required minimum is {settings.risk.min_liquidity_depth:g}. Unknown or insufficient depth blocks execution.",
     )
     check(
         "market_probability",
