@@ -40,5 +40,5 @@ methodology that PR-D1 intentionally does not add.
 PR-D2 adds `historical-file` for local JSONL datasets. This mode uses one row per
 simulated date and does not reuse a current snapshot across the range. It only
 marks profitability claims as meaningful when historical settlement/outcome
-metadata is present. See `docs/PHASE_7C_PR_D2_HISTORICAL_DATASET.md` for the
+metadata is present. See `docs/archive/phases/PHASE_7C_PR_D2_HISTORICAL_DATASET.md` for the
 schema and backtest boundary.

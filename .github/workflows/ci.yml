@@ -3,6 +3,7 @@ name: ci
 on:
   push:
     branches: ["**"]
+    tags: ["v*"]
   pull_request:
 
 jobs:
@@ -17,6 +18,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
+      - name: Release metadata
+        run: python scripts/check_release.py
+      - name: Release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: python scripts/check_release.py --tag "$GITHUB_REF_NAME"
       - name: Ruff
         run: ruff check .
       - name: Pytest

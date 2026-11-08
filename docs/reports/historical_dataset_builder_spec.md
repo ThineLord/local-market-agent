@@ -31,7 +31,7 @@ The schema has two profiles:
   or Strategy v2 acceptance.
 
 The current `historical-file` importer accepts the compact fields documented in
-`docs/PHASE_7C_PR_D2_HISTORICAL_DATASET.md`. This Phase 7G schema is a superset:
+`docs/archive/phases/PHASE_7C_PR_D2_HISTORICAL_DATASET.md`. This Phase 7G schema is a superset:
 future builders should keep the compact top-level fields for compatibility and
 add richer provenance fields for validation and audit.
 

@@ -17,10 +17,10 @@ scheduler, daemon, live trading, or strategy work was started.
 
 Required documents reviewed:
 
-- `docs/PHASE_7_PAPER_TRADING_CONTINUOUS_OPERATIONS_PLAN.md`
+- `docs/archive/phases/PHASE_7_PAPER_TRADING_CONTINUOUS_OPERATIONS_PLAN.md`
 - `docs/reports/phase7_completion_audit.md`
 - `docs/reports/phase7_gap_analysis.md`
-- `docs/PHASE_7_PR_H1_HARDENING.md`
+- `docs/archive/phases/PHASE_7_PR_H1_HARDENING.md`
 - `docs/IMPLEMENTATION_LOG.md`
 
 ## A. Completion Status

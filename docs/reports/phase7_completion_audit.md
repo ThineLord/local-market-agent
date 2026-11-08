@@ -30,19 +30,19 @@ The audit focused on actual implemented behavior, not intended future work.
 
 Required documents read:
 
-- `docs/PHASE_7_PAPER_TRADING_CONTINUOUS_OPERATIONS_PLAN.md`
-- `docs/PHASE_7_PR_1_PAPER_PORTFOLIO_ENGINE.md`
-- `docs/PHASE_7_PR_2_RISK_GATE_FRAMEWORK.md`
-- `docs/PHASE_7_PR_3_DAILY_REPORT_GENERATOR.md`
-- `docs/PHASE_7_PR_4_DAILY_RUNNER.md`
-- `docs/PHASE_7_PR_5_OPERATIONS_DASHBOARD.md`
+- `docs/archive/phases/PHASE_7_PAPER_TRADING_CONTINUOUS_OPERATIONS_PLAN.md`
+- `docs/archive/phases/PHASE_7_PR_1_PAPER_PORTFOLIO_ENGINE.md`
+- `docs/archive/phases/PHASE_7_PR_2_RISK_GATE_FRAMEWORK.md`
+- `docs/archive/phases/PHASE_7_PR_3_DAILY_REPORT_GENERATOR.md`
+- `docs/archive/phases/PHASE_7_PR_4_DAILY_RUNNER.md`
+- `docs/archive/phases/PHASE_7_PR_5_OPERATIONS_DASHBOARD.md`
 
 ## A. Requirements Matrix
 
 | Requirement | Implemented? | Evidence | File locations |
 | --- | --- | --- | --- |
 | Phase 7 must be paper-only. | YES | Paper/risk/run models default to paper mode and reject live execution mode; runner metadata records `live_trading_allowed=False`. | `src/local_market_agent/schemas/models.py:225`, `src/local_market_agent/schemas/models.py:247`, `src/local_market_agent/schemas/models.py:319`, `src/local_market_agent/schemas/models.py:355`, `src/local_market_agent/operations/phase7_daily.py:135` |
-| No real brokerage integration. | YES | No Phase 7 code path calls broker order APIs; PR docs explicitly keep broker work out of scope; safety grep found only docs/read-only adapters. | `docs/PHASE_7_PR_1_PAPER_PORTFOLIO_ENGINE.md`, `docs/PHASE_7_PR_2_RISK_GATE_FRAMEWORK.md`, `docs/PHASE_7_PR_4_DAILY_RUNNER.md`, `docs/PHASE_7_PR_5_OPERATIONS_DASHBOARD.md` |
+| No real brokerage integration. | YES | No Phase 7 code path calls broker order APIs; PR docs explicitly keep broker work out of scope; safety grep found only docs/read-only adapters. | `docs/archive/phases/PHASE_7_PR_1_PAPER_PORTFOLIO_ENGINE.md`, `docs/archive/phases/PHASE_7_PR_2_RISK_GATE_FRAMEWORK.md`, `docs/archive/phases/PHASE_7_PR_4_DAILY_RUNNER.md`, `docs/archive/phases/PHASE_7_PR_5_OPERATIONS_DASHBOARD.md` |
 | No real money trading. | YES | Defaults keep real-money and live orders disabled; paper models reject live execution. | `src/local_market_agent/config/settings.py:79`, `src/local_market_agent/config/settings.py:97`, `src/local_market_agent/schemas/models.py:239` |
 | No automatic live order execution. | YES | Runner only invokes `PaperLedger` after approved paper gates; no live execution path or scheduler was introduced. | `src/local_market_agent/operations/phase7_daily.py:95`, `src/local_market_agent/operations/phase7_daily.py:100`, `src/local_market_agent/paper/ledger.py:63` |
 | No broker API keys. | YES | Settings may carry optional local LLM key plumbing, but no broker credential fields or broker order key usage were added for Phase 7. | `src/local_market_agent/config/settings.py:88`, `src/local_market_agent/config/settings.py:114` |
@@ -93,7 +93,7 @@ Required documents read:
 | Dashboard latest report path. | YES | View model reads report path from latest run. | `ui/app.py:141`, `ui/app.py:422` |
 | Dashboard safety labeling. | YES | Page caption states paper-only, read-only, no order/approval/live/runner controls. | `ui/app.py:411` |
 | Output structure: `data/paper_trades`, `reports`, `metrics`, `logs`. | PARTIAL | `data/paper_trades` and `data/reports` placeholders exist; no `data/metrics` or tracked `logs` placeholder was found. | `data/paper_trades/.gitkeep`, `data/reports/.gitkeep`, `.gitignore` |
-| Small PR sequence. | YES | PR-1 through PR-5 docs and commits exist as separate focused changes. | `docs/PHASE_7_PR_1_PAPER_PORTFOLIO_ENGINE.md`, `docs/PHASE_7_PR_5_OPERATIONS_DASHBOARD.md` |
+| Small PR sequence. | YES | PR-1 through PR-5 docs and commits exist as separate focused changes. | `docs/archive/phases/PHASE_7_PR_1_PAPER_PORTFOLIO_ENGINE.md`, `docs/archive/phases/PHASE_7_PR_5_OPERATIONS_DASHBOARD.md` |
 
 ## B. Completion Criteria Review
 
