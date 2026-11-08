@@ -36,3 +36,19 @@ lma paper-replay --intent-id INTENT_ID --db data/experiment.sqlite
 先写简报，再进行 `packet-review --scope research`；只有来源文件的包不能标记为简报已审核。没有可靠概率估计时，可以如实编写并审核 `observe` 简报，但仍不能形成交易意图。`packet-prepare` 保留真实策略/风险拒绝原因，拒绝时不会写入权益基线。准备阶段仍检查组合风险，执行阶段再次检查并要求独立的逐意图审批。
 
 当前 Kalshi 流动性使用双方顶档可买容量中较小的美元值：`min(YES ask × YES ask size, (1 − YES bid) × YES bid size)`。这不是整簿流动性或成交量；缺少数据保持未知，实际容量过小仍被默认 100 美元门槛阻断。
+
+
+### 重跑有界真实数据检查
+
+```bash
+python scripts/collect_public_weather_packet.py --market-id KXHIGHNY-26NOV09-T57 --output data/reports/public-weather-NEW --allow-network
+lma packet-check --packet data/reports/public-weather-NEW/packet.json
+# 阅读来源文件和观察简报后，再记录实际研究审核。
+lma packet-review --packet data/reports/public-weather-NEW/packet.json --output data/reports/public-weather-NEW/research-review.json --actor YOUR_REVIEWER_LABEL --reason YOUR_ACTUAL_REVIEW_FINDINGS
+lma packet-check --packet data/reports/public-weather-NEW/packet.json --review data/reports/public-weather-NEW/research-review.json
+lma packet-prepare --packet data/reports/public-weather-NEW/packet.json --review data/reports/public-weather-NEW/research-review.json --db data/reports/public-weather-NEW/paper.sqlite
+```
+
+选择当前开放的 KXHIGHNY 日最高温市场；上面的日期示例会到期。采集器仅做六次公开只读 GET：系列规则、NWS 预报/观测、单页同事件市场列表、订单簿、最后采集具体市场。拒绝覆盖已有目录，也不支持其他系列。保存带哈希的 JSON 凭据及成稿前后诊断。明确区分 NWS 生成/观测时间和未经验证的首次发布时间。订单簿仅存档供核对，快照深度完全取自同一次市场响应及其采集时间。
+
+自动生成的是**观察简报草稿**：概率为空，明确禁止交易，即使来源审核完成也不能产生订单。采集器不生成审核、审批或数据库。审核人应真正检查资料并如实标识身份；agent 来源审核不是人工订单审批。可信概率估计、足够深度和独立订单审批仍是分别满足的前提，不应为演示通过而补造。缺少前提时 `packet-prepare` 退出码 3 是真实预期结果。未决市场不编造结算。

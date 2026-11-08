@@ -36,3 +36,19 @@ The final settlement receipt URL must exactly match `resolution_source`. Its col
 Author the brief before `packet-review --scope research`; a source-only package cannot be stamped as a reviewed brief. An honest `observe` brief with no defensible probability may be reviewed, but remains non-actionable. `packet-prepare` preserves the strategy/risk rejection reasons and does not write equity baselines on refusal. The preparation service still checks portfolio risk; execution rechecks current risk and requires its separate per-intent approval.
 
 For current Kalshi data, liquidity is conservative best-quote buy capacity in USD: the smaller of `YES ask × YES ask size` and `(1 − YES bid) × YES bid size`. It is not whole-book liquidity or traded volume. Unknown capacity stays unknown; genuinely small capacity stays blocked by the unchanged $100 default.
+
+
+### Repeat the bounded public-data check
+
+```bash
+python scripts/collect_public_weather_packet.py --market-id KXHIGHNY-26NOV09-T57 --output data/reports/public-weather-NEW --allow-network
+lma packet-check --packet data/reports/public-weather-NEW/packet.json
+# Read source files and the observation brief before recording a research review.
+lma packet-review --packet data/reports/public-weather-NEW/packet.json --output data/reports/public-weather-NEW/research-review.json --actor YOUR_REVIEWER_LABEL --reason YOUR_ACTUAL_REVIEW_FINDINGS
+lma packet-check --packet data/reports/public-weather-NEW/packet.json --review data/reports/public-weather-NEW/research-review.json
+lma packet-prepare --packet data/reports/public-weather-NEW/packet.json --review data/reports/public-weather-NEW/research-review.json --db data/reports/public-weather-NEW/paper.sqlite
+```
+
+Choose a current KXHIGHNY daily-high ticker; the dated example eventually closes. The collector makes six public read-only GETs: series rules, NWS forecast/observation, one bounded same-event market listing, order book, then the exact market. It refuses existing output directories and other market series. It saves checksummed JSON receipts and before/after-brief diagnostics. NWS generation/observation times are labeled explicitly; first-publication times are not claimed verified. Order-book data is archived for inspection, while snapshot depth comes entirely from the market response at its own retrieval time.
+
+The generated brief is an **observation draft**, with null probability and explicit trade vetoes; it cannot produce an order even after source review. It never writes a review, approval or database. Reviewers must assess the actual sources and identify themselves honestly; an agent source review is not human order approval. Supplying a defensible calibrated estimate, sufficient depth and explicit order approval are separate prerequisites, not values to fabricate for a successful demo. A blocked preparation (exit 3) is the expected truthful result when those prerequisites are absent. No settlement is invented for an unresolved market.
