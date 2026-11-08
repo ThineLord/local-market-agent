@@ -128,6 +128,13 @@ def test_error_isolated_redacted_and_cli_exit_nonzero(tmp_path):
 
 
 def test_network_requires_opt_in_and_cannot_be_backdated(tmp_path, monkeypatch, snapshot):
+    # Keep the open-market fixture valid independently of the real calendar.
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return REVIEW.astimezone(tz) if tz else REVIEW.replace(tzinfo=None)
+
+    monkeypatch.setattr("local_market_agent.operations.watchlist.datetime", FixedDateTime)
     path = tmp_path / "watchlist.json"
     path.write_text(json.dumps({"name": "public", "entries": [{
         "source": "kalshi", "market_id": snapshot.market.market_id,
@@ -136,7 +143,7 @@ def test_network_requires_opt_in_and_cannot_be_backdated(tmp_path, monkeypatch, 
 
     def fetch(self, market_id):
         calls.append(market_id)
-        return snapshot.model_copy(update={"as_of": datetime.now(UTC)})
+        return snapshot.model_copy(update={"as_of": REVIEW})
 
     monkeypatch.setattr("local_market_agent.operations.watchlist.KalshiAdapter.fetch_snapshot", fetch)
     report = screen_watchlist(path)

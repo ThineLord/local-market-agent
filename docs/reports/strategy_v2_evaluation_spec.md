@@ -31,7 +31,7 @@ This specification is based on:
 - `docs/reports/strategy_v2_recommendations.md`
 - `docs/reports/research_quality_validation.md`
 - `docs/reports/research_quality_comparison.md`
-- `docs/PHASE_7C_PR_D2_HISTORICAL_DATASET.md`
+- `docs/archive/phases/PHASE_7C_PR_D2_HISTORICAL_DATASET.md`
 - `docs/DATA_SOURCES.md`
 
 ## A. Forecast Inputs
