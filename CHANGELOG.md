@@ -11,6 +11,7 @@ No changes yet.
 - Add bounded public NBA/NFL depth discovery using best-quote USD capacity and unchanged risk gates.
 - Add a frozen NBA Elo probability model, checksummed 120-source history and chronological holdout validation with conservative residual stress checks.
 - Bind current NBA research packets to exact pregame events, contract rules and reproducible source files; recheck game start, source age, model validation and net edge during preparation, approval and execution.
+- Correct NO-position valuation by converting explicit YES market marks to the held NO outcome; preserve own-cost fallback and document historical derived-record replay.
 - Keep public-source order approval explicit and all trading simulated. No database schema migration.
 
 [English release notes](docs/releases/0.4.0.md) · [中文发布说明](docs/releases/0.4.0.zh-CN.md)
