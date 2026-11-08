@@ -51,8 +51,8 @@ docs/archive/            历史阶段计划与审查记录
 - [中文 Agent 指南](docs/agents/README.zh-CN.md) · [English Agent guide](docs/agents/README.md)
 - [文档索引](docs/README.md) · [安全与风控](docs/SAFETY_AND_RISK.md)
 - [变更记录](CHANGELOG.md) · [版本管理规则](docs/VERSIONING.zh-CN.md)
-- [0.3.0 发布说明](docs/releases/0.3.0.zh-CN.md) · [GitHub Releases](https://github.com/ThineLord/local-market-agent/releases)
+- [0.3.1 发布说明](docs/releases/0.3.1.zh-CN.md) · [GitHub Releases](https://github.com/ThineLord/local-market-agent/releases)
 
-当前应用版本为 **0.3.0**。后续发布统一使用一致的包版本、`vX.Y.Z` 标签、发布说明和经过审查的 PR。Codex 负责组织与管理，subagents 负责 review 和合并，不委派 bots。
+当前应用版本为 **0.3.1**。后续发布统一使用一致的包版本、`vX.Y.Z` 标签、发布说明和经过审查的 PR。Codex 负责组织与管理，subagents 负责 review 和合并，不委派 bots。
 
 默认保持 `REAL_MONEY_ENABLED=false`、`ALLOW_LIVE_ORDERS=false`、`HUMAN_APPROVAL_REQUIRED=true`。每笔模拟订单必须关联信号和已批准的风险决策。可运行[完整隔离演示](docs/users/README.zh-CN.md#新审批与证据流程)。升级方式和剩余限制见发布说明。

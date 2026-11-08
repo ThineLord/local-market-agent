@@ -6,6 +6,14 @@ Application releases use `vMAJOR.MINOR.PATCH`. See [version management](docs/VER
 
 No changes yet.
 
+## 0.3.1 — 2026-11-09
+
+- Fix current Kalshi depth normalization using conservative best-quote buy capacity in USD; distinguish missing versus genuinely insufficient liquidity and correct legacy cent units.
+- Separate source integrity, exact research-review validation, strategy readiness, portfolio risk and order approval; show actual veto reasons and avoid equity-baseline writes on rejected preparation.
+- Add a bounded opt-in public Kalshi/NWS collector with preserved receipts and an observation-only brief; no invented probability, review, order or settlement.
+
+[English release notes](docs/releases/0.3.1.md) · [中文发布说明](docs/releases/0.3.1.zh-CN.md)
+
 ## 0.3.0 — 2026-11-09
 
 - Add source-bound evidence packets, explicit research/settlement review, atomic settlement receipts, an isolated CLI demo and read-only next-step guidance.

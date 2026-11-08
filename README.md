@@ -51,8 +51,8 @@ docs/archive/            historical phase plans and reviews
 - [Agent guide](docs/agents/README.md) · [中文 Agent 指南](docs/agents/README.zh-CN.md)
 - [Documentation index](docs/README.md) · [Safety and risk](docs/SAFETY_AND_RISK.md)
 - [Changelog](CHANGELOG.md) · [Version policy](docs/VERSIONING.md)
-- [0.3.0 release notes](docs/releases/0.3.0.md) · [GitHub Releases](https://github.com/ThineLord/local-market-agent/releases)
+- [0.3.1 release notes](docs/releases/0.3.1.md) · [GitHub Releases](https://github.com/ThineLord/local-market-agent/releases)
 
-The application version is **0.3.0**. Future releases use matching package versions, `vX.Y.Z` tags, release notes, and reviewed PRs. Codex coordinates the work; subagents review and merge. No bot delegation is used.
+The application version is **0.3.1**. Future releases use matching package versions, `vX.Y.Z` tags, release notes, and reviewed PRs. Codex coordinates the work; subagents review and merge. No bot delegation is used.
 
 Defaults remain `REAL_MONEY_ENABLED=false`, `ALLOW_LIVE_ORDERS=false`, and `HUMAN_APPROVAL_REQUIRED=true`. Every paper order must reference a signal and an approved risk decision. Try the [complete isolated demo](docs/users/README.md#approval-and-evidence-workflow). See the release notes for migration and remaining limitations.
