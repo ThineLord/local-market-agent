@@ -905,3 +905,7 @@ Added an explicit-network, six-GET Kalshi/NWS collector scoped to NYC daily-high
 ## 2026-11-09 — Release 0.3.1 public-data acceptance
 
 Prepared bilingual 0.3.1 release notes/homepages/changelog and detailed public-data validation. Same-response comparison proves unknown legacy liquidity becomes $1.30 conservative depth; independent source review becomes valid while genuine economic vetoes remain. Two real preparation attempts return exit 3 with identical hashes across all 17 business tables. Public execution/settlement are inapplicable; a separate synthetic 15-step workflow verifies those existing paths. No user database migrated or public order approval fabricated. Full offline suite: 449 passed, 1 optional network skipped; separately enabled network test: 1 passed. Reviewer findings and final exact-head CI are required before release merge/tag.
+
+## 2026-11-09 — Bounded liquid public-market discovery
+
+Added opt-in, bounded NBA/NFL binary game-market screening with unchanged shared quote/depth thresholds. Captures source hashes/timestamps, retains failures, ranks passing market checks by conservative USD depth, and explicitly separates quote eligibility from pregame/model/order readiness. Refuses overwrite, duplicates, wrong series, repeated cursors and oversized responses. No credentials, ledger writes or order creation. Deterministic coverage and full Ruff/pytest/release checks run before the PR.
