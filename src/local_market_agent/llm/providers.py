@@ -69,8 +69,9 @@ class MockLLMProvider:
         if snapshot.get("best_bid") is not None and snapshot.get("best_ask") is not None:
             spread = snapshot["best_ask"] - snapshot["best_bid"]
 
-        reasons: list[str] = ["Live trading is disabled; output is paper-only."]
+        reasons: list[str] = []
         uncertainty_notes = [
+            "Live trading is disabled; output is paper-only.",
             "Fixture evidence is limited and may not capture late-breaking developments."
         ]
         if not all_evidence:
@@ -116,6 +117,7 @@ class MockLLMProvider:
                 "market_implied_probability": market_probability,
                 "recommended_action": action,
                 "must_not_trade_reasons": reasons,
+                "resolution_source": "synthetic://mock-outcome-not-verified",
             },
             sort_keys=True,
         )

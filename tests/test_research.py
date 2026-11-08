@@ -9,7 +9,8 @@ def test_research_brief_generator_outputs_valid_brief(snapshot, evidence):
     assert brief.market_id == snapshot.market.market_id
     assert brief.recommended_action == RecommendedAction.PAPER_BUY_YES
     assert brief.uncertainty_notes
-    assert brief.must_not_trade_reasons
+    assert not brief.must_not_trade_reasons
+    assert any("paper-only" in note for note in brief.uncertainty_notes)
 
 
 def test_sparse_evidence_lowers_confidence(snapshot, evidence):

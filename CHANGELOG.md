@@ -4,6 +4,8 @@ Application releases use `vMAJOR.MINOR.PATCH`. See [version management](docs/VER
 
 ## Unreleased
 
+- Share fail-closed screening/execution preflight and persist UTC equity baselines and peak drawdown; preserve real observation times and research vetoes.
+
 - Make paper ledger opens/closes atomic and idempotent; isolate daily and sandbox dry-runs from the source database.
 
 ## 0.2.0 — 2026-11-09

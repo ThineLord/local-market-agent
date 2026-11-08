@@ -192,7 +192,7 @@ def load_phase7_market_inputs(
         msg = f"unsupported market source '{audit.market_source}'"
         raise ValueError(msg)
 
-    if refresh_market_timestamp and audit.market_source != MARKET_SOURCE_HISTORICAL_FILE:
+    if refresh_market_timestamp and audit.market_source == MARKET_SOURCE_FIXTURE:
         snapshot = snapshot.model_copy(
             update={"snapshot_id": new_id("snapshot"), "as_of": _as_utc(now)}
         )

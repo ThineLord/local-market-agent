@@ -73,7 +73,8 @@ def _same_decision_higher_confidence_json(prompt: str) -> str:
             "estimated_probability": 0.6083,
             "market_implied_probability": snapshot["market_implied_probability"],
             "recommended_action": "paper_buy_yes",
-            "must_not_trade_reasons": ["Paper-only validation path."],
+            "must_not_trade_reasons": [],
+            "resolution_source": "synthetic://provider-test-resolution",
         },
         sort_keys=True,
     )

@@ -16,6 +16,8 @@ from local_market_agent.operations.phase7_market_data import (
 from local_market_agent.paper import PaperLedger
 from local_market_agent.reporting import Phase7DailyReportGenerator
 from local_market_agent.risk import RiskEngine, RiskGateEvaluator
+from local_market_agent.risk.equity import loss_metrics, observe_equity
+from local_market_agent.risk.preflight import preflight
 from local_market_agent.schemas import (
     MarketSnapshot,
     PaperOrder,
@@ -28,7 +30,13 @@ from local_market_agent.schemas import (
     RiskGateDecisionStatus,
     Signal,
 )
-from local_market_agent.schemas.models import OrderSide, SignalAction, new_id
+from local_market_agent.schemas.models import (
+    OrderSide,
+    RiskStatus,
+    SignalAction,
+    deterministic_model_context,
+    new_id,
+)
 from local_market_agent.storage import SQLiteRepository
 from local_market_agent.strategy import PredictionMarketEdgeStrategy
 
@@ -158,27 +166,40 @@ class Phase7DailyRunner:
             context["market_id"] = snapshot.market.market_id
             context["snapshot_id"] = snapshot.snapshot_id
             self.repository.save_market_snapshot(snapshot)
-            brief = ResearchBriefGenerator(
-                repository=self.repository,
-                provider=build_llm_provider(self.settings),
-            ).generate(snapshot, market_inputs.evidence)
+            with deterministic_model_context(seed=run_id, now=started_at):
+                brief = ResearchBriefGenerator(
+                    repository=self.repository,
+                    provider=build_llm_provider(self.settings),
+                ).generate(snapshot, market_inputs.evidence)
             context["brief_id"] = brief.brief_id
             signal = PredictionMarketEdgeStrategy(self.settings.risk).generate_signal(
                 brief, snapshot
             )
             context["signal_id"] = signal.signal_id
             self.repository.save_signal(signal)
+            marks = _marks_from_snapshot(snapshot)
+            portfolio_before = observe_equity(
+                self.repository, ledger.snapshot_portfolio(marks, persist=False), started_at
+            )
+            self.repository.save_portfolio_snapshot(portfolio_before)
+            checks = preflight(snapshot, brief, self.settings, started_at)
+            failed_checks = [check for check in checks if not check.passed]
+            context["preflight_failures"] = [check.code for check in failed_checks]
             risk_decision = RiskEngine(self.settings.risk).evaluate_signal(
                 signal,
+                **loss_metrics(portfolio_before),
                 open_positions=len(
                     [position for position in self.repository.list_positions() if position.is_open]
                 ),
             )
+            if failed_checks:
+                risk_decision = risk_decision.model_copy(update={
+                    "status": RiskStatus.VETOED,
+                    "reasons": [f"{c.code}: {c.message}" for c in failed_checks],
+                })
             context["risk_decision_id"] = risk_decision.risk_decision_id
             self.repository.save_risk_decision(risk_decision)
 
-            marks = _marks_from_snapshot(snapshot)
-            portfolio_before = ledger.snapshot_portfolio(marks)
             context["portfolio_snapshot_id"] = portfolio_before.snapshot_id
             intent = _intent_from_signal(signal, snapshot, risk_decision, self.settings)
             risk_gate_decision = self._evaluate_risk_gates(
@@ -209,7 +230,8 @@ class Phase7DailyRunner:
                         snapshot=snapshot,
                     )
                     context["paper_order_id"] = order.order_id
-                    portfolio_after = ledger.snapshot_portfolio(marks)
+                    portfolio_after = observe_equity(self.repository, ledger.snapshot_portfolio(marks, persist=False), started_at)
+                    self.repository.save_portfolio_snapshot(portfolio_after)
                     context["portfolio_snapshot_id"] = portfolio_after.snapshot_id
                     status = Phase7RunStatus.COMPLETED
                     reasons = ["Paper run completed with simulated paper order."]
@@ -223,7 +245,8 @@ class Phase7DailyRunner:
                 )
             if settled_position_ids:
                 context["settled_position_ids"] = settled_position_ids
-                portfolio_after = ledger.snapshot_portfolio(marks)
+                portfolio_after = observe_equity(self.repository, ledger.snapshot_portfolio(marks, persist=False), started_at)
+                self.repository.save_portfolio_snapshot(portfolio_after)
                 context["portfolio_snapshot_id"] = portfolio_after.snapshot_id
                 reasons = list(reasons) + [
                     "Historical local settlement closed open paper positions."
@@ -285,6 +308,8 @@ class Phase7DailyRunner:
                 metadata={
                     "report_warnings": report_artifact.warnings,
                     "risk_gate_status": risk_gate_decision.status.value,
+                    "preflight_failures": context["preflight_failures"],
+                    "loss_metrics": loss_metrics(portfolio_before),
                     "dry_run": dry_run,
                     "fixture_mode": market_data_audit.get("is_fixture") is True,
                     "refresh_market_timestamp": self.refresh_market_timestamp,

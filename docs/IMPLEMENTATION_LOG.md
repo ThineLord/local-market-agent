@@ -838,3 +838,10 @@
 
 - Integrated the current main documentation/version baseline into PR #4, preserving both implementation-log histories. Added the fix to Unreleased.
 - Validation on the refreshed branch: `ruff check .` passed; full offline pytest **380 passed, 1 skipped**; release metadata and diff whitespace checks passed. Existing fault/commit/concurrency and populated dry-run regression coverage remains in place. No existing user database was opened or migrated.
+
+### Shared preflight and equity risk (2026-11-09)
+
+- Screening and daily paper execution now share market identity, open/close state, freshness, finite quote/liquidity, evidence timing, resolution and research-veto checks. Public observations retain their source timestamps. Synthetic mock paper-only notes are uncertainty notes, not unconditional trade vetoes.
+- Persist UTC day-start equity and running observed peak in an additive table. First observation explicitly bootstraps from initial capital; later days use the previous session's last observed equity (not an invented midnight quote). Reject backdated updates; use a separate replay database. Daily RiskEngine receives actual loss/drawdown metrics and RiskGate uses day-start equity.
+- Validation: full offline suite **388 passed, 1 skipped**; Ruff, release metadata and diff checks passed. Added multi-day peak/daily baseline, backdate refusal, six hard preflight failures, and runner loss propagation regressions. Existing dry-run settlement tests now correctly expect a closed-market rejection with unchanged source state.
+- Follow-up PR will route legacy CLI and per-intent approval through the same execution authorization service. No live trading or user database changes.

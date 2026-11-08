@@ -25,6 +25,7 @@ from local_market_agent.schemas import (
     RiskGateDecision,
     Signal,
 )
+from local_market_agent.schemas.models import EquityBaseline
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -45,6 +46,7 @@ class SQLiteRepository:
         "phase7_run_manifests": "run_id",
         "phase7_run_records": "run_id",
         "performance_reports": "report_id",
+        "equity_baselines": "baseline_id",
     }
 
     def __init__(self, db_path: str | Path) -> None:
@@ -144,6 +146,7 @@ class SQLiteRepository:
             getattr(model, "created_at", None)
             or getattr(model, "filled_at", None)
             or getattr(model, "as_of", None)
+            or getattr(model, "observed_at", None)
         )
         if value is None:
             return ""
@@ -386,3 +389,10 @@ class SQLiteRepository:
             rows = conn.execute(f"SELECT payload FROM {table} ORDER BY created_at").fetchall()
         for row in rows:
             yield json.loads(row["payload"])
+
+
+    def list_equity_baselines(self) -> list[EquityBaseline]:
+        return self._list("equity_baselines", EquityBaseline)
+
+    def save_equity_baseline(self, baseline: EquityBaseline) -> None:
+        self._save("equity_baselines", "baseline_id", baseline)

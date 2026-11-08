@@ -365,7 +365,8 @@ class RiskGateEvaluator:
         checks: list[RiskGateCheck],
         halted_reasons: list[str],
     ) -> float:
-        if portfolio_snapshot.starting_cash <= 0:
+        baseline = portfolio_snapshot.day_start_equity or portfolio_snapshot.starting_cash
+        if baseline <= 0:
             reason = "Cannot evaluate drawdown with zero starting cash."
             halted_reasons.append(reason)
             checks.append(
@@ -383,8 +384,8 @@ class RiskGateEvaluator:
         drawdown_pct = max(
             0.0,
             round(
-                (portfolio_snapshot.starting_cash - portfolio_snapshot.portfolio_value)
-                / portfolio_snapshot.starting_cash,
+                (baseline - portfolio_snapshot.portfolio_value)
+                / baseline,
                 8,
             ),
         )

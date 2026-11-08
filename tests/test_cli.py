@@ -36,7 +36,13 @@ def test_cli_offline_demo_chain(tmp_path):
     assert json.loads(result.output)["orders"] == 1
 
 
-def test_cli_phase7_run_daily_fixture_smoke(tmp_path):
+def test_cli_phase7_run_daily_fixture_smoke(tmp_path, monkeypatch):
+    from datetime import UTC, datetime
+    class FixtureClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 6, 5, 16, tzinfo=UTC)
+    monkeypatch.setattr("local_market_agent.operations.phase7_daily.datetime", FixtureClock)
     runner = CliRunner()
     db = tmp_path / "phase7-cli.sqlite"
     report_dir = tmp_path / "reports"

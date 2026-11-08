@@ -162,7 +162,8 @@ def test_phase7_runner_openai_compatible_qwen_style_response_completes(
             "estimated_probability": 0.72,
             "market_implied_probability": snapshot["market_implied_probability"],
             "recommended_action": "paper_buy_yes",
-            "must_not_trade_reasons": ["Paper-only validation path."],
+            "must_not_trade_reasons": [],
+            "resolution_source": "synthetic://provider-test-resolution",
         }
         content = f"<think>hidden reasoning</think>\n```json\n{json_module.dumps(brief)}\n```"
         return FakeResponse(content)
