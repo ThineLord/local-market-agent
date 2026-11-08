@@ -845,3 +845,5 @@
 - Persist UTC day-start equity and running observed peak in an additive table. First observation explicitly bootstraps from initial capital; later days use the previous session's last observed equity (not an invented midnight quote). Reject backdated updates; use a separate replay database. Daily RiskEngine receives actual loss/drawdown metrics and RiskGate uses day-start equity.
 - Validation: full offline suite **388 passed, 1 skipped**; Ruff, release metadata and diff checks passed. Added multi-day peak/daily baseline, backdate refusal, six hard preflight failures, and runner loss propagation regressions. Existing dry-run settlement tests now correctly expect a closed-market rejection with unchanged source state.
 - Follow-up PR will route legacy CLI and per-intent approval through the same execution authorization service. No live trading or user database changes.
+
+- Final portfolio persistence check exposed equal observation timestamps selecting the earlier state. Added insertion-order tie-breaking to repository reads; the dashboard now selects the final state for a deterministic run timestamp.

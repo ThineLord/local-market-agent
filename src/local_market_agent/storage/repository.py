@@ -202,7 +202,7 @@ class SQLiteRepository:
         if limit is not None:
             limit_clause = "LIMIT ?"
             params.append(limit)
-        query = f"SELECT payload FROM {table} {where} ORDER BY created_at DESC {limit_clause}"
+        query = f"SELECT payload FROM {table} {where} ORDER BY created_at DESC, rowid DESC {limit_clause}"
         with self._connection() as conn:
             rows = conn.execute(query, params).fetchall()
         return [model_cls.model_validate_json(row["payload"]) for row in rows]
