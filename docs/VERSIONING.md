@@ -8,7 +8,7 @@ The first managed GitHub Release is **0.2.0**. Earlier repository history used p
 
 Use `MAJOR.MINOR.PATCH` for the application and `vMAJOR.MINOR.PATCH` for Git tags. Before 1.0, minor releases may change workflows and must describe migrations; patches contain compatible fixes and documentation corrections. After 1.0, incompatible public CLI/data-contract changes require a major version. Data schemas keep separate identifiers; never silently migrate local databases just to match an application version.
 
-`pyproject.toml` and `src/local_market_agent/__init__.py` must agree. Root README files display that same version. Each release has English and Chinese notes in `docs/releases/X.Y.Z[.zh-CN].md`, and an entry in `CHANGELOG.md`. Keep an Unreleased section for work awaiting a release. A development PR may update Unreleased first; the release PR finalizes the bump and notes before tagging.
+`pyproject.toml` and `src/local_market_agent/__init__.py` must agree. Root README files display that same version. Each release has English and Chinese notes in `docs/releases/X.Y.Z[.zh-CN].md`, and an entry in `CHANGELOG.md`. Use absolute GitHub `blob/vX.Y.Z/` URLs in release notes so the same body works on the GitHub Release page. Keep an Unreleased section for work awaiting a release. A development PR may update Unreleased first; the release PR finalizes the bump and notes before tagging.
 
 ## Release procedure
 

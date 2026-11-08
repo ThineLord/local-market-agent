@@ -8,7 +8,7 @@
 
 应用版本采用 `主版本.次版本.修订版本`，Git 标签采用 `vX.Y.Z`。1.0 之前，次版本可调整工作流，但必须说明迁移；修订版本用于兼容的修复与文档更正。1.0 之后，公开 CLI 或数据契约的不兼容变动必须增加主版本。数据 schema 使用独立标识，不得为匹配应用版本而静默迁移本地数据库。
 
-`pyproject.toml` 与 `src/local_market_agent/__init__.py` 必须一致，两份首页显示同一版本。每次发布在 `docs/releases/X.Y.Z[.zh-CN].md` 保存中英文说明，并更新 `CHANGELOG.md`。尚未发布的工作先记入 Unreleased；发布 PR 再统一完成版本提升与说明。
+`pyproject.toml` 与 `src/local_market_agent/__init__.py` 必须一致，两份首页显示同一版本。每次发布在 `docs/releases/X.Y.Z[.zh-CN].md` 保存中英文说明，并更新 `CHANGELOG.md`。发布说明中的链接使用 GitHub `blob/vX.Y.Z/` 绝对地址，确保同一正文在 GitHub Release 页面也可访问。尚未发布的工作先记入 Unreleased；发布 PR 再统一完成版本提升与说明。
 
 ## 发布步骤
 
