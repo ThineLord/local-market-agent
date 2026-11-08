@@ -26,7 +26,7 @@ def main():
     try:
         if args.command == "collect":
             output = collect_nba_history(args.output, allow_network=args.allow_network)
-            print(json.dumps({"history": str(output), "requests": 120, "orders": 0}))
+            print(json.dumps({"history": str(output), "endpoints": 120, "orders": 0}))
             return
         now = datetime.now(UTC)
         games, audit = load_history(args.history, now=now)
