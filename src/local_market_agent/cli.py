@@ -49,6 +49,7 @@ from local_market_agent.operations import (
 from local_market_agent.operations.phase7_market_data import phase7_market_data_audit
 from local_market_agent.operations.watchlist import screen_watchlist, write_screen_report
 from local_market_agent.paper import PaperLedger
+from local_market_agent.paper.execution import PaperExecutionService
 from local_market_agent.reporting import DailyReportService
 from local_market_agent.risk import RiskEngine
 from local_market_agent.schemas import MarketSnapshot, ResearchBrief, Signal
@@ -244,10 +245,25 @@ def risk_check(
     snapshot = _latest_snapshot(repo, brief.market_id)
     signal = PredictionMarketEdgeStrategy(settings.risk).generate_signal(brief, snapshot)
     repo.save_signal(signal)
-    decision = RiskEngine(settings.risk).evaluate_signal(
-        signal,
-        open_positions=len([position for position in repo.list_positions() if position.is_open]),
-    )
+    from datetime import UTC, datetime
+
+    from local_market_agent.risk.equity import loss_metrics, observe_equity
+    from local_market_agent.risk.preflight import portfolio_marks, preflight
+    from local_market_agent.schemas.models import RiskStatus
+    now = datetime.now(UTC)
+    failures = [c.message for c in preflight(snapshot, brief, settings, now) if not c.passed]
+    metrics = {}
+    if not failures:
+        try:
+            marks = portfolio_marks(repo, snapshot, settings, now)
+            portfolio = observe_equity(repo, PaperLedger(repo, settings.risk).snapshot_portfolio(marks, persist=False), now)
+            metrics = loss_metrics(portfolio)
+        except ValueError as exc:
+            failures.append(str(exc))
+    decision = RiskEngine(settings.risk).evaluate_signal(signal,
+        open_positions=len([p for p in repo.list_positions() if p.is_open]), **metrics)
+    if failures:
+        decision = decision.model_copy(update={"status": RiskStatus.VETOED, "reasons": failures})
     repo.save_risk_decision(decision)
     typer.echo(
         json.dumps(
@@ -263,48 +279,72 @@ def risk_check(
     )
 
 
+def _paper_result(payload):
+    typer.echo(json.dumps(payload, sort_keys=True))
+    code = {"completed": 0, "approved": 0, "rejected": 3,
+            "pending_manual_approval": 4, "halted": 5}.get(payload.get("status"), 1)
+    if code:
+        raise typer.Exit(code)
+
+
 @app.command()
-def paper_log(
-    db: Annotated[Path | None, typer.Option(help="SQLite database path.")] = None,
-) -> None:
+def paper_log(db: Annotated[Path | None, typer.Option(help="SQLite database path.")] = None) -> None:
+    """Prepare the latest approved signal; never bypass per-intent approval."""
     settings = _settings(db)
     repo = _repository(settings)
-    decisions = repo.list_risk_decisions(limit=10)
-    approved = next((decision for decision in decisions if decision.is_approved), None)
+    approved = next((d for d in repo.list_risk_decisions() if d.is_approved), None)
     if approved is None:
-        typer.echo(json.dumps({"status": "no_approved_risk_decision"}, sort_keys=True))
-        return
-    existing = [
-        order
-        for order in repo.list_paper_orders(limit=50)
-        if order.risk_decision_id == approved.risk_decision_id
-    ]
-    if existing:
-        typer.echo(
-            json.dumps(
-                {"status": "existing_order", "order_id": existing[0].order_id},
-                sort_keys=True,
-            )
-        )
-        return
-    signal = _latest_signal(repo, approved.signal_id)
-    snapshot = _latest_snapshot(repo, signal.market_id)
-    order = PaperLedger(repo, settings.risk).create_order(
-        signal=signal,
-        risk_decision=approved,
-        snapshot=snapshot,
-    )
-    typer.echo(
-        json.dumps(
-            {
-                "status": "paper_order_filled",
-                "order_id": order.order_id,
-                "quantity": order.quantity,
-                "fill_price": order.fill_price,
-            },
-            sort_keys=True,
-        )
-    )
+        _paper_result({"status": "rejected", "reasons": ["No approved risk decision"]})
+    signal = repo.load_signal(approved.signal_id)
+    brief = repo.load_brief(signal.brief_id) if signal else None
+    snapshot = repo.load_market_snapshot(brief.snapshot_id) if brief else None
+    try:
+        if signal is None or brief is None or snapshot is None:
+            raise ValueError("Missing linked signal/brief/snapshot")
+        service = PaperExecutionService(repo, settings)
+        prepared = service.prepare(signal, approved, snapshot, brief,
+            simulation=snapshot.market.platform == "fixture")
+        _paper_result(service.execute(prepared.intent_id))
+    except ValueError as exc:
+        _paper_result({"status": "rejected", "reasons": [str(exc)]})
+
+
+@app.command()
+def paper_approve(
+    intent_id: Annotated[str, typer.Option(help="Exact prepared intent ID.")],
+    actor: Annotated[str, typer.Option(help="Local reviewer identity (audit label).")],
+    reason: Annotated[str, typer.Option(help="Review rationale.")],
+    expires_seconds: Annotated[int, typer.Option(min=1, max=3600)] = 300,
+    reject: Annotated[bool, typer.Option(help="Record rejection instead of approval.")] = False,
+    db: Annotated[Path | None, typer.Option()] = None,
+) -> None:
+    settings = _settings(db)
+    try:
+        approval = PaperExecutionService(_repository(settings), settings).approve(intent_id,
+            actor=actor, reason=reason, expires_seconds=expires_seconds, reject=reject)
+        _paper_result({"status": approval.decision, "approval": approval.model_dump(mode="json")})
+    except ValueError as exc:
+        _paper_result({"status": "rejected", "reasons": [str(exc)]})
+
+
+@app.command()
+def paper_execute(
+    intent_id: Annotated[str, typer.Option(help="Exact approved intent ID.")],
+    db: Annotated[Path | None, typer.Option()] = None,
+) -> None:
+    settings = _settings(db)
+    try:
+        _paper_result(PaperExecutionService(_repository(settings), settings).execute(intent_id))
+    except ValueError as exc:
+        _paper_result({"status": "rejected", "intent_id": intent_id, "reasons": [str(exc)]})
+
+
+@app.command()
+def paper_status(db: Annotated[Path | None, typer.Option()] = None) -> None:
+    """Inspect prepared intents and approval history without executing."""
+    repo = _repository(_settings(db))
+    typer.echo(json.dumps({"intents": [x.model_dump(mode="json") for x in repo.list_prepared_executions()],
+        "approvals": [x.model_dump(mode="json") for x in repo.list_paper_approvals()]}, sort_keys=True))
 
 
 @app.command()
@@ -1174,6 +1214,8 @@ def phase7_run_daily(
                 "market_id": record.market_id,
                 "paper_order_id": record.paper_order_id,
                 "risk_gate_decision_id": record.risk_gate_decision_id,
+                "intent_id": record.metadata.get("intent_id"),
+                "reasons": record.reasons,
                 "report_path": record.report_path,
                 "manifest_id": record.manifest_id,
                 "report_checksum": record.metadata.get("report_checksum"),

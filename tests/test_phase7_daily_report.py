@@ -34,7 +34,7 @@ def _intent(signal, *, notional: float = 100.0) -> PaperOrderIntent:
 
 def test_phase7_daily_report_writes_markdown_artifact(repo, brief, snapshot, tmp_path):
     signal, decision = _approved_signal_and_decision(repo, brief, snapshot)
-    ledger = PaperLedger(repo)
+    ledger = PaperLedger(repo, simulation_only=True)
 
     ledger.create_order(signal=signal, risk_decision=decision, snapshot=snapshot)
     first_position = repo.list_positions()[0]

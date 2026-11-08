@@ -14,10 +14,16 @@ from local_market_agent.operations.phase7_market_data import (
     phase7_market_data_audit,
 )
 from local_market_agent.paper import PaperLedger
+from local_market_agent.paper.execution import PaperExecutionService
 from local_market_agent.reporting import Phase7DailyReportGenerator
 from local_market_agent.risk import RiskEngine, RiskGateEvaluator
 from local_market_agent.risk.equity import loss_metrics, observe_equity
-from local_market_agent.risk.preflight import preflight, snapshot_checks
+from local_market_agent.risk.preflight import (
+    PreflightCheck,
+    portfolio_marks,
+    preflight,
+    snapshot_checks,
+)
 from local_market_agent.schemas import (
     MarketSnapshot,
     PaperOrder,
@@ -180,10 +186,15 @@ class Phase7DailyRunner:
             checks = preflight(snapshot, brief, self.settings, started_at)
             if market_id is not None:
                 checks.extend(snapshot_checks(snapshot, market_id, self.settings, started_at))
+            try:
+                trusted_marks = portfolio_marks(self.repository, snapshot, self.settings, started_at)
+            except ValueError as exc:
+                trusted_marks = {}
+                checks.append(PreflightCheck("portfolio_marks", False, str(exc)))
             failed_checks = [check for check in checks if not check.passed]
             context["preflight_failures"] = [check.code for check in failed_checks]
             # Rejected observations must never change persistent risk history.
-            marks = {} if failed_checks else _marks_from_snapshot(snapshot)
+            marks = {} if failed_checks else trusted_marks
             portfolio_before = ledger.snapshot_portfolio(marks, persist=False)
             if not failed_checks:
                 portfolio_before = observe_equity(self.repository, portfolio_before, started_at)
@@ -205,6 +216,15 @@ class Phase7DailyRunner:
 
             context["portfolio_snapshot_id"] = portfolio_before.snapshot_id
             intent = _intent_from_signal(signal, snapshot, risk_decision, self.settings)
+            service = PaperExecutionService(self.repository, self.settings)
+            local_simulation = market_source in {"fixture", "historical-file"}
+            if not local_simulation:
+                gate_config = replace(gate_config, require_manual_approval=True)
+            if intent is not None:
+                prepared = service.prepare(signal, risk_decision, snapshot, brief,
+                    now=started_at, simulation=local_simulation)
+                intent = prepared.intent
+                context["intent_id"] = intent.intent_id
             risk_gate_decision = self._evaluate_risk_gates(
                 intent=intent,
                 signal=signal,
@@ -227,11 +247,16 @@ class Phase7DailyRunner:
                     status = Phase7RunStatus.DRY_RUN
                     reasons = ["Dry run completed; no paper position mutation was performed."]
                 else:
-                    order = ledger.create_order(
-                        signal=signal,
-                        risk_decision=risk_decision,
-                        snapshot=snapshot,
-                    )
+                    service.approve(intent.intent_id, actor="local-simulation",
+                        reason="Explicit no-manual-approval local fixture/history simulation",
+                        now=started_at)
+                    execution = service.execute(intent.intent_id, now=started_at)
+                    if execution["status"] != "completed":
+                        raise ValueError("Execution recheck failed: " + "; ".join(execution["reasons"]))
+                    context["approval_id"] = execution.get("approval_id")
+                    risk_gate_decision = self.repository.load_risk_gate_decision(execution["risk_gate_decision_id"])
+                    context["risk_gate_decision_id"] = risk_gate_decision.risk_gate_decision_id
+                    order = self.repository.load_paper_order(execution["order_id"])
                     context["paper_order_id"] = order.order_id
                     portfolio_after = observe_equity(self.repository, ledger.snapshot_portfolio(marks, persist=False), started_at)
                     self.repository.save_portfolio_snapshot(portfolio_after)
@@ -312,6 +337,8 @@ class Phase7DailyRunner:
                     "report_warnings": report_artifact.warnings,
                     "risk_gate_status": risk_gate_decision.status.value,
                     "preflight_failures": context["preflight_failures"],
+                    "intent_id": context.get("intent_id"),
+                    "approval_id": context.get("approval_id"),
                     "loss_metrics": loss_metrics(portfolio_before),
                     "dry_run": dry_run,
                     "fixture_mode": market_data_audit.get("is_fixture") is True,
@@ -404,18 +431,19 @@ class Phase7DailyRunner:
                 notional=1,
                 metadata={"placeholder": "non-actionable signal had no paper order intent"},
             )
-        return RiskGateEvaluator(
-            config=gate_config,
-            repository=self.repository,
-        ).evaluate(
-            signal=signal,
-            intent=intent,
-            portfolio_snapshot=portfolio_snapshot,
-            positions=self.repository.list_positions(),
-            recent_fills=self.repository.list_paper_fills(),
-            market_data_as_of=snapshot.as_of,
-            now=now,
-        )
+        with deterministic_model_context(seed=f"gate:{intent.intent_id}", now=now):
+            return RiskGateEvaluator(
+                config=gate_config,
+                repository=self.repository,
+            ).evaluate(
+                signal=signal,
+                intent=intent,
+                portfolio_snapshot=portfolio_snapshot,
+                positions=self.repository.list_positions(),
+                recent_fills=self.repository.list_paper_fills(),
+                market_data_as_of=snapshot.as_of,
+                now=now,
+            )
 
 
 def _intent_from_signal(

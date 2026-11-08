@@ -12,7 +12,7 @@ def _create_approved_order(repo, brief, snapshot):
     assert decision.is_approved
     repo.save_signal(signal)
     repo.save_risk_decision(decision)
-    return PaperLedger(repo).create_order(
+    return PaperLedger(repo, simulation_only=True).create_order(
         signal=signal,
         risk_decision=decision,
         snapshot=snapshot,
@@ -20,7 +20,7 @@ def _create_approved_order(repo, brief, snapshot):
 
 
 def test_daily_report_aggregates_paper_orders_positions_and_pnl(repo, brief, snapshot):
-    ledger = PaperLedger(repo)
+    ledger = PaperLedger(repo, simulation_only=True)
 
     _create_approved_order(repo, brief, snapshot)
     first_position = repo.list_positions()[0]

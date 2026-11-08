@@ -849,3 +849,10 @@
 - Final portfolio persistence check exposed equal observation timestamps selecting the earlier state. Added insertion-order tie-breaking to repository reads; the dashboard now selects the final state for a deterministic run timestamp.
 
 - Independent review found rejected quote observations could poison persistent equity baselines. Moved preflight ahead of observation persistence, added requested market identity checks and three populated-holding regressions (stale/future/mismatched market). Final full offline validation: **391 passed, 1 skipped**.
+
+### Per-intent paper authorization (2026-11-09)
+
+- Added prepared execution/approval tables and content binding across intent, snapshot, brief, signal, risk and configuration. Added explicit local actor/reason/expiry/rejection history. All ordinary opens use the execution service; legacy paper-log now prepares/pends, daily persists actionable intents, and public-source runs cannot disable approval.
+- Execution rechecks hard preflight, latest local observation, all held-market marks, current loss/exposure/limits under the same SQLite write lock as fills. Approval cannot override failures. Fixture/history no-manual simulations generate labelled receipts; fixture-only low-level simulation remains explicit for deterministic fault tests. Actor names are local audit labels, not authenticated multi-user identities.
+- Added bilingual workflow/migration documentation and approval CLI commands. Existing static legacy demo now correctly rejects stale/expired data; a dynamic synthetic CLI test verifies pending → approve → execute. Added expiry, rejection, future/stale data, changed inputs/config/live flags, concurrent retry, transaction-failure rollback, newer observation and unmarked holding regressions.
+- Validation: Ruff, version metadata, diff checks; full offline suite **404 passed, 1 skipped**. No user database, live endpoint or paid model call.

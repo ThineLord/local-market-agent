@@ -52,11 +52,11 @@ def test_open_rolls_back_every_write(repo, approved, monkeypatch, failure_at, er
     with monkeypatch.context() as patch:
         patch.setattr(SQLiteRepository, '_save', fail)
         with pytest.raises(error):
-            PaperLedger(repo).create_order(**approved)
+            PaperLedger(repo, simulation_only=True).create_order(**approved)
     assert business_hash(repo) == before
     # Retry after reconnect must succeed once, without orphan orders/fills.
     reopened = SQLiteRepository(repo.db_path)
-    ledger = PaperLedger(reopened)
+    ledger = PaperLedger(reopened, simulation_only=True)
     order = ledger.create_order(**approved)
     assert ledger.create_order(**approved) == order
     assert [reopened.count(t) for t in ('paper_orders', 'positions', 'paper_fills')] == [1, 1, 1]
@@ -64,7 +64,7 @@ def test_open_rolls_back_every_write(repo, approved, monkeypatch, failure_at, er
 
 @pytest.mark.parametrize('failure_at', [1, 2])
 def test_close_rolls_back_every_write(repo, approved, monkeypatch, failure_at):
-    ledger = PaperLedger(repo)
+    ledger = PaperLedger(repo, simulation_only=True)
     position = ledger.open_position(**approved)
     before = business_hash(repo)
     original = SQLiteRepository._save
@@ -88,7 +88,7 @@ def test_close_rolls_back_every_write(repo, approved, monkeypatch, failure_at):
 
 
 def test_duplicate_open_after_close_does_not_reopen(repo, approved):
-    ledger = PaperLedger(repo)
+    ledger = PaperLedger(repo, simulation_only=True)
     position = ledger.open_position(**approved)
     closed = ledger.close_position(position.position_id, 1)
     before = business_hash(repo)
@@ -97,13 +97,13 @@ def test_duplicate_open_after_close_does_not_reopen(repo, approved):
 
 
 def test_conflicting_risk_decision_retry_is_rejected(repo, approved):
-    PaperLedger(repo).create_order(**approved)
+    PaperLedger(repo, simulation_only=True).create_order(**approved)
     before = business_hash(repo)
     changed = approved | {'risk_decision': approved['risk_decision'].model_copy(
         update={'risk_decision_id': 'different-approval'}
     )}
     with pytest.raises(ValueError, match='conflicting'):
-        PaperLedger(repo).create_order(**changed)
+        PaperLedger(repo, simulation_only=True).create_order(**changed)
     assert business_hash(repo) == before
 
 
@@ -113,7 +113,7 @@ def test_concurrent_open_and_close_are_idempotent(repo, approved):
     def open_once(_):
         local = SQLiteRepository(repo.db_path)
         barrier.wait(timeout=10)
-        return PaperLedger(local).open_position(**approved)
+        return PaperLedger(local, simulation_only=True).open_position(**approved)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         positions = list(pool.map(open_once, range(2)))
@@ -123,7 +123,7 @@ def test_concurrent_open_and_close_are_idempotent(repo, approved):
     def close_once(_):
         local = SQLiteRepository(repo.db_path)
         barrier.wait(timeout=10)
-        return PaperLedger(local).close_position(positions[0].position_id, 1)
+        return PaperLedger(local, simulation_only=True).close_position(positions[0].position_id, 1)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         closed = list(pool.map(close_once, range(2)))
@@ -134,7 +134,7 @@ def test_concurrent_open_and_close_are_idempotent(repo, approved):
 @pytest.mark.parametrize('operation,write_number', [('open', 1), ('open', 2), ('open', 3), ('close', 1), ('close', 2)])
 def test_process_exit_recovery(repo, approved, tmp_path, operation, write_number):
     if operation == 'close':
-        PaperLedger(repo).open_position(**approved)
+        PaperLedger(repo, simulation_only=True).open_position(**approved)
     before = business_hash(repo)
     payload = tmp_path / 'synthetic.json'
     payload.write_text(json.dumps({k: v.model_dump(mode='json') for k, v in approved.items()}))
@@ -153,7 +153,7 @@ def crash(self, *args):
     if writes == int(sys.argv[4]):
         os._exit(73)
 SQLiteRepository._save = crash
-ledger = PaperLedger(repo)
+ledger = PaperLedger(repo, simulation_only=True)
 payload = json.load(open(sys.argv[2]))
 if sys.argv[3] == 'open':
     ledger.create_order(signal=Signal(**payload['signal']), risk_decision=RiskDecision(**payload['risk_decision']), snapshot=MarketSnapshot(**payload['snapshot']))
@@ -170,7 +170,7 @@ else:
     with sqlite3.connect(repo.db_path) as conn:
         assert conn.execute('PRAGMA integrity_check').fetchone() == ('ok',)
         assert conn.execute('PRAGMA foreign_key_check').fetchall() == []
-    ledger = PaperLedger(reopened)
+    ledger = PaperLedger(reopened, simulation_only=True)
     position = ledger.open_position(**approved)
     ledger.close_position(position.position_id, 1)
     ledger.close_position(position.position_id, 1)
@@ -201,15 +201,15 @@ def test_commit_failure_rolls_back_transition(repo, approved, monkeypatch):
     with monkeypatch.context() as patch:
         patch.setattr(repo, '_connect', connect)
         with pytest.raises(sqlite3.OperationalError, match='commit failure'):
-            PaperLedger(repo).create_order(**approved)
+            PaperLedger(repo, simulation_only=True).create_order(**approved)
     assert business_hash(repo) == before
-    assert PaperLedger(repo).create_order(**approved) is not None
+    assert PaperLedger(repo, simulation_only=True).create_order(**approved) is not None
 
 
 def test_read_only_portfolio_snapshot(repo, approved):
     from ui.server import DashboardRepository
 
-    PaperLedger(repo).open_position(**approved)
+    PaperLedger(repo, simulation_only=True).open_position(**approved)
     before = business_hash(repo)
     portfolio = PaperLedger(DashboardRepository(repo.db_path)).snapshot_portfolio(persist=False)
     assert portfolio.open_positions == 1

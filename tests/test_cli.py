@@ -25,15 +25,15 @@ def test_cli_offline_demo_chain(tmp_path):
     assert result.exit_code == 0, result.output
     risk_payload = json.loads(result.output)
     assert risk_payload["signal_action"] == "paper_buy_yes"
-    assert risk_payload["risk_status"] == "approved"
+    assert risk_payload["risk_status"] == "vetoed"
 
     result = runner.invoke(app, ["paper-log", "--db", str(db)])
-    assert result.exit_code == 0, result.output
-    assert json.loads(result.output)["status"] == "paper_order_filled"
+    assert result.exit_code == 3, result.output
+    assert json.loads(result.output)["status"] == "rejected"
 
     result = runner.invoke(app, ["report-daily", "--db", str(db)])
     assert result.exit_code == 0, result.output
-    assert json.loads(result.output)["orders"] == 1
+    assert json.loads(result.output)["orders"] == 0
 
 
 def test_cli_phase7_run_daily_fixture_smoke(tmp_path, monkeypatch):

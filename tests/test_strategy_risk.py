@@ -84,7 +84,7 @@ def test_live_trading_attempt_is_vetoed(brief, snapshot):
 def test_missing_risk_decision_blocks_paper_order(repo, brief, snapshot):
     signal = PredictionMarketEdgeStrategy().generate_signal(brief, snapshot)
     with pytest.raises(ValueError, match="approved risk decision"):
-        PaperLedger(repo).create_order(signal=signal, risk_decision=None, snapshot=snapshot)
+        PaperLedger(repo, simulation_only=True).create_order(signal=signal, risk_decision=None, snapshot=snapshot)
 
 
 def test_llm_cannot_bypass_risk(brief, snapshot):
