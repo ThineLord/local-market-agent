@@ -154,7 +154,7 @@ def load_history(directory, *, now=None):
             if event["id"] in per_page_ids:
                 raise ValueError("Duplicate game within one team schedule")
             per_page_ids.add(event["id"])
-            game, reason = parse_final(event, season, team, now)
+            game, reason = parse_final(event, season, team, retrieved)
             if game is None:
                 excluded[f"{season}:{reason}"] += 1
                 continue
