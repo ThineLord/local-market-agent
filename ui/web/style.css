@@ -94,3 +94,4 @@ html{background:var(--paper)}
 .workflow-command { display:flex; gap:12px; align-items:center; }
 .workflow-command code { flex:1; min-width:0; overflow-wrap:anywhere; font-size:12px; }
 @media(max-width:600px) { .workflow-command { flex-direction:column; align-items:flex-start; } }
+.workflow-command button { background:var(--surface); color:var(--ink); border:1px solid var(--line); }
