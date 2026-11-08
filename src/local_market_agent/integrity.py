@@ -80,6 +80,11 @@ def verify_run(repo, record, manifest):
         links.append(gate.intent_id == intent.intent_id)
     if approval and intent:
         links.extend([approval.intent_id == intent.intent_id, approval.content_hash == intent.content_hash, approval.decision == "approved"])
+    if order and intent and approval and artifacts.get("opening_fills") and artifacts.get("position_openings"):
+        values = dict(prepared=intent, snapshot=snapshot, brief=brief, signal=signal,
+            risk=risk, gate=gate, approval=approval, order=order,
+            fill=artifacts["opening_fills"][0], position=artifacts["position_openings"][0])
+        links.append(opening_links(values, intent.intent_id, order.created_at))
     if not all(links):
         errors.append("Artifact relationship mismatch in replay chain")
     return errors, []
@@ -126,18 +131,47 @@ def verify_execution(repo, intent_id):
     for key in EXECUTION_FIELDS:
         if values.get(key) is None or content_hash(values.get(key)) != receipt.hashes.get(key):
             errors.append(f"Execution content checksum mismatch: {key}")
-    if not errors:
-        p,a,o,f,pos,r,g = [values[k] for k in ("prepared","approval","order","fill","position","risk","gate")]
-        valid = (p.intent_id == intent_id == a.intent_id == g.intent_id and
-                 a.content_hash == p.content_hash and a.decision == "approved" and
-                 a.created_at <= receipt.created_at < a.expires_at and
-                 o.signal_id == r.signal_id == p.intent.signal_id == f.signal_id and
-                 o.risk_decision_id == r.risk_decision_id == f.risk_decision_id and
-                 o.order_id == f.order_id == pos["order_id"] and f.position_id == pos["position_id"] and
-                 r.is_approved and g.status == "approved" and not f.is_closing and
-                 o.quantity == f.quantity == pos["quantity"] and o.fill_price == f.price == pos["average_price"])
-        if not valid:
-            errors.append("Execution relationship mismatch")
+    if not errors and not opening_links(values, intent_id, receipt.created_at):
+        errors.append("Execution relationship mismatch")
     return {"ok": not errors, "intent_id": intent_id, "errors": errors,
             "checks": "content hashes and links; not signatures or strategy recomputation",
             "receipt": receipt.model_dump(mode="json")}
+
+
+def opening_links(values, intent_id, executed_at):
+    try:
+        return _opening_links(values, intent_id, executed_at)
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _opening_links(values, intent_id, executed_at):
+    if any(values.get(k) is None for k in EXECUTION_FIELDS):
+        return False
+    d = {k: (v.model_dump(mode="json") if hasattr(v, "model_dump") else v) for k,v in values.items()}
+    p,s,b,sig,r,g,a,o,f,pos = [d[k] for k in ("prepared","snapshot","brief","signal","risk","gate","approval","order","fill","position")]
+    from datetime import datetime
+    def time(value):
+        return datetime.fromisoformat(value)
+    market = s["market"]["market_id"]
+    signal_id = sig["signal_id"]
+    risk_id = r["risk_decision_id"]
+    expected_side = {"paper_buy_yes": "BUY_YES", "paper_buy_no": "BUY_NO"}.get(sig["action"])
+    bound_content = {"inputs": [p["intent"],s,b,sig,r], "config": p["config"], "simulation": p["simulation"]}
+    return all([
+        p["intent_id"] == p["intent"]["intent_id"] == intent_id == a["intent_id"] == g["intent_id"],
+        p["snapshot_id"] == s["snapshot_id"] == b["snapshot_id"],
+        p["brief_id"] == b["brief_id"] == sig["brief_id"],
+        p["risk_decision_id"] == risk_id == o["risk_decision_id"] == f["risk_decision_id"] == pos["risk_decision_id"],
+        p["intent"]["signal_id"] == signal_id == r["signal_id"] == g["signal_id"] == o["signal_id"] == f["signal_id"] == pos["signal_id"],
+        all(x["market_id"] == market for x in [p["intent"],b,sig,g,o,f,pos]),
+        o["order_id"] == f["order_id"] == pos["order_id"], f["position_id"] == pos["position_id"],
+        expected_side == p["intent"]["side"] == o["side"] == f["side"] == pos["side"],
+        o["quantity"] == f["quantity"] == pos["quantity"] == p["intent"]["quantity"],
+        o["fill_price"] == f["price"] == pos["average_price"] == p["intent"]["metadata"]["fill_price"],
+        o["limit_price"] == p["intent"]["limit_price"], o["fees"] == f["fees"] == p["intent"]["metadata"]["fees"],
+        a["decision"] == "approved", r["status"] == "approved", g["status"] == "approved",
+        not f["is_closing"], o["status"] == "filled",
+        time(a["created_at"]) <= executed_at < time(a["expires_at"]),
+        a["content_hash"] == p["content_hash"] == content_hash(bound_content),
+    ])

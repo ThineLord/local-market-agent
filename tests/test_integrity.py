@@ -84,3 +84,21 @@ def test_execution_approval_expiry_link_even_if_resealed(repo, prepared):
     a = repo.list_paper_approvals()[0]
     repo.save_paper_approval(a.model_copy(update={"expires_at": NOW-timedelta(seconds=1)}))
     assert not verify_execution(repo, intent.intent_id)["ok"]
+
+
+@pytest.mark.parametrize("field,value", [("signal_id","wrong"),("market_id","wrong"),("risk_decision_id","wrong"),("side","BUY_NO")])
+def test_resealed_position_mismatches_fail_both_replays(tmp_path, field, value):
+    from local_market_agent.integrity import content_hash, execution_artifacts
+    repo, record = _run_phase7(tmp_path)
+    pos = repo.list_positions()[0]
+    repo.save_position(type(pos).model_validate({**pos.model_dump(), field: value}))
+    manifest = repo.load_phase7_run_manifest(record.run_id)
+    repo.save_phase7_run_manifest(seal_run(repo, record, manifest))
+    assert not Phase7ReplayService(repo).replay(record.run_id).ok
+    intent_id = record.metadata["intent_id"]
+    receipt = repo.load_execution_receipt(intent_id)
+    values = execution_artifacts(repo, receipt.references)
+    receipt.hashes = {k: content_hash(v) for k,v in values.items()}
+    repo.save_execution_receipt(receipt)
+    result = verify_execution(repo, intent_id)
+    assert not result["ok"] and "Execution relationship mismatch" in result["errors"]
