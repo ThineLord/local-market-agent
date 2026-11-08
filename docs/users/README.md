@@ -183,3 +183,7 @@ Use a different new output directory if it already exists; previous records are 
 ### Verifiable NBA model workflow
 
 The [fixed NBA probability protocol](../NBA_PROBABILITY.md) describes opt-in public depth discovery, a frozen score-based model, chronological holdout validation, and a source-bound current-game packet. The new `scripts/build_nba_packet.py` checks exact pregame identity and preserves every source for offline reproduction. It does not approve an order. Existing risk thresholds, research review and per-intent approval remain required; game-start, source-age and conservative-edge failures block execution. Historical validation is retrospective and is not evidence of trading profit.
+
+## Hong Kong racing replay
+
+A separate read-only workspace preserves historical tickets, official entitlements and redeemed cash as distinct records. Import original T−10/T−3 snapshots for full-field checks; missing evidence remains UNKNOWN and no validated racing model is claimed. Every racing research decision is currently NO BET. See the [racing guide](../HORSE_REPLAY.md).

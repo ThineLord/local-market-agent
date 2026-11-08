@@ -31,3 +31,6 @@ logs/
 # Local browser validation artifacts
 .playwright-cli/
 output/
+
+# Private horse snapshots, ticket histories and derived reports
+/data/horse/

@@ -1,0 +1,588 @@
+{
+  "schema_version": 1,
+  "meeting_date": "2026-01-01",
+  "course": "ST",
+  "race_count": 1,
+  "data_kind": "synthetic_fixture",
+  "sources": [
+    {
+      "source_id": "facts",
+      "path": "facts.txt",
+      "sha256": "888d8f37aaa609af786b33407c5691bd26b09aa20bffd5992195846defc49d29",
+      "category": "pre_race",
+      "captured_at": "2026-01-01T09:49:30Z",
+      "claimed_available_at": "2026-01-01T09:49:30Z",
+      "description": "Invented input for offline protocol tests"
+    },
+    {
+      "source_id": "odds3",
+      "path": "odds3.txt",
+      "sha256": "fe210301465afdeda4112d784c3007f482393fbf417efa49b7b52a590fd20ff3",
+      "category": "pre_race",
+      "captured_at": "2026-01-01T09:56:30Z",
+      "claimed_available_at": "2026-01-01T09:56:30Z",
+      "description": "Invented input for offline protocol tests"
+    },
+    {
+      "source_id": "budget",
+      "path": "budget.txt",
+      "sha256": "f04848e727ac47ef290c41649012d71de647e8c29883bbb23e04e988ccc083aa",
+      "category": "budget",
+      "captured_at": "2026-01-01T09:00:00Z",
+      "claimed_available_at": "2026-01-01T09:00:00Z",
+      "description": "Invented input for offline protocol tests"
+    },
+    {
+      "source_id": "archive",
+      "path": "archive.txt",
+      "sha256": "0022f0aa7e7b6523163f9dad44365715c8ab789d968b5c8fb5176ff3cedbcc33",
+      "category": "availability_evidence",
+      "captured_at": "2026-01-01T11:00:00Z",
+      "claimed_available_at": "2026-01-01T11:00:00Z",
+      "description": "Invented input for offline protocol tests"
+    }
+  ],
+  "checkpoints": [
+    {
+      "meeting_date": "2026-01-01",
+      "course": "ST",
+      "race_no": 1,
+      "stage": "T10",
+      "decision_at": "2026-01-01T09:50:00Z",
+      "scheduled_start": "2026-01-01T10:00:00Z",
+      "scheduled_start_known_at": "2026-01-01T09:00:00Z",
+      "surface": "AWT",
+      "distance_m": 1200,
+      "going": "GOOD",
+      "declared_count": 7,
+      "runners": [
+        {
+          "horse_no": 1,
+          "horse_id": "S1",
+          "name": "Synthetic 1",
+          "draw": 1,
+          "weight_lb": 120,
+          "jockey": "Synthetic jockey",
+          "jockey_evidence": "No performance conclusion; synthetic record only",
+          "recent_form": [
+            {
+              "race_date": "2025-12-01",
+              "available_at": "2025-12-02T00:00:00Z",
+              "course": "ST",
+              "surface": "AWT",
+              "distance_m": 1200,
+              "finish": 1,
+              "field_size": 7
+            }
+          ],
+          "win_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:49:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "place_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:49:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "source_ids": [
+            "facts"
+          ]
+        },
+        {
+          "horse_no": 2,
+          "horse_id": "S2",
+          "name": "Synthetic 2",
+          "draw": 2,
+          "weight_lb": 120,
+          "jockey": "Synthetic jockey",
+          "jockey_evidence": "No performance conclusion; synthetic record only",
+          "recent_form": [
+            {
+              "race_date": "2025-12-01",
+              "available_at": "2025-12-02T00:00:00Z",
+              "course": "ST",
+              "surface": "AWT",
+              "distance_m": 1200,
+              "finish": 2,
+              "field_size": 7
+            }
+          ],
+          "win_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:49:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "place_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:49:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "source_ids": [
+            "facts"
+          ]
+        },
+        {
+          "horse_no": 3,
+          "horse_id": "S3",
+          "name": "Synthetic 3",
+          "draw": 3,
+          "weight_lb": 120,
+          "jockey": "Synthetic jockey",
+          "jockey_evidence": "No performance conclusion; synthetic record only",
+          "recent_form": [
+            {
+              "race_date": "2025-12-01",
+              "available_at": "2025-12-02T00:00:00Z",
+              "course": "ST",
+              "surface": "AWT",
+              "distance_m": 1200,
+              "finish": 3,
+              "field_size": 7
+            }
+          ],
+          "win_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:49:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "place_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:49:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "source_ids": [
+            "facts"
+          ]
+        },
+        {
+          "horse_no": 4,
+          "horse_id": "S4",
+          "name": "Synthetic 4",
+          "draw": 4,
+          "weight_lb": 120,
+          "jockey": "Synthetic jockey",
+          "jockey_evidence": "No performance conclusion; synthetic record only",
+          "recent_form": [
+            {
+              "race_date": "2025-12-01",
+              "available_at": "2025-12-02T00:00:00Z",
+              "course": "ST",
+              "surface": "AWT",
+              "distance_m": 1200,
+              "finish": 4,
+              "field_size": 7
+            }
+          ],
+          "win_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:49:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "place_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:49:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "source_ids": [
+            "facts"
+          ]
+        },
+        {
+          "horse_no": 5,
+          "horse_id": "S5",
+          "name": "Synthetic 5",
+          "draw": 5,
+          "weight_lb": 120,
+          "jockey": "Synthetic jockey",
+          "jockey_evidence": "No performance conclusion; synthetic record only",
+          "recent_form": [
+            {
+              "race_date": "2025-12-01",
+              "available_at": "2025-12-02T00:00:00Z",
+              "course": "ST",
+              "surface": "AWT",
+              "distance_m": 1200,
+              "finish": 5,
+              "field_size": 7
+            }
+          ],
+          "win_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:49:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "place_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:49:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "source_ids": [
+            "facts"
+          ]
+        },
+        {
+          "horse_no": 6,
+          "horse_id": "S6",
+          "name": "Synthetic 6",
+          "draw": 6,
+          "weight_lb": 120,
+          "jockey": "Synthetic jockey",
+          "jockey_evidence": "No performance conclusion; synthetic record only",
+          "recent_form": [
+            {
+              "race_date": "2025-12-01",
+              "available_at": "2025-12-02T00:00:00Z",
+              "course": "ST",
+              "surface": "AWT",
+              "distance_m": 1200,
+              "finish": 6,
+              "field_size": 7
+            }
+          ],
+          "win_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:49:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "place_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:49:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "source_ids": [
+            "facts"
+          ]
+        },
+        {
+          "horse_no": 7,
+          "horse_id": "S7",
+          "name": "Synthetic 7",
+          "draw": 7,
+          "weight_lb": 120,
+          "jockey": "Synthetic jockey",
+          "jockey_evidence": "No performance conclusion; synthetic record only",
+          "recent_form": [
+            {
+              "race_date": "2025-12-01",
+              "available_at": "2025-12-02T00:00:00Z",
+              "course": "ST",
+              "surface": "AWT",
+              "distance_m": 1200,
+              "finish": 7,
+              "field_size": 7
+            }
+          ],
+          "win_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:49:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "place_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:49:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "source_ids": [
+            "facts"
+          ]
+        }
+      ],
+      "source_ids": [
+        "facts"
+      ]
+    },
+    {
+      "meeting_date": "2026-01-01",
+      "course": "ST",
+      "race_no": 1,
+      "stage": "T3",
+      "decision_at": "2026-01-01T09:57:00Z",
+      "scheduled_start": "2026-01-01T10:00:00Z",
+      "scheduled_start_known_at": "2026-01-01T09:00:00Z",
+      "surface": "AWT",
+      "distance_m": 1200,
+      "going": "GOOD",
+      "declared_count": 7,
+      "runners": [
+        {
+          "horse_no": 1,
+          "horse_id": "S1",
+          "name": "Synthetic 1",
+          "draw": 1,
+          "weight_lb": 120,
+          "jockey": "Synthetic jockey",
+          "jockey_evidence": "No performance conclusion; synthetic record only",
+          "recent_form": [
+            {
+              "race_date": "2025-12-01",
+              "available_at": "2025-12-02T00:00:00Z",
+              "course": "ST",
+              "surface": "AWT",
+              "distance_m": 1200,
+              "finish": 1,
+              "field_size": 7
+            }
+          ],
+          "win_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:56:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "place_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:56:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "source_ids": [
+            "facts",
+            "odds3"
+          ]
+        },
+        {
+          "horse_no": 2,
+          "horse_id": "S2",
+          "name": "Synthetic 2",
+          "draw": 2,
+          "weight_lb": 120,
+          "jockey": "Synthetic jockey",
+          "jockey_evidence": "No performance conclusion; synthetic record only",
+          "recent_form": [
+            {
+              "race_date": "2025-12-01",
+              "available_at": "2025-12-02T00:00:00Z",
+              "course": "ST",
+              "surface": "AWT",
+              "distance_m": 1200,
+              "finish": 2,
+              "field_size": 7
+            }
+          ],
+          "win_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:56:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "place_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:56:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "source_ids": [
+            "facts",
+            "odds3"
+          ]
+        },
+        {
+          "horse_no": 3,
+          "horse_id": "S3",
+          "name": "Synthetic 3",
+          "draw": 3,
+          "weight_lb": 120,
+          "jockey": "Synthetic jockey",
+          "jockey_evidence": "No performance conclusion; synthetic record only",
+          "recent_form": [
+            {
+              "race_date": "2025-12-01",
+              "available_at": "2025-12-02T00:00:00Z",
+              "course": "ST",
+              "surface": "AWT",
+              "distance_m": 1200,
+              "finish": 3,
+              "field_size": 7
+            }
+          ],
+          "win_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:56:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "place_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:56:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "source_ids": [
+            "facts",
+            "odds3"
+          ]
+        },
+        {
+          "horse_no": 4,
+          "horse_id": "S4",
+          "name": "Synthetic 4",
+          "draw": 4,
+          "weight_lb": 120,
+          "jockey": "Synthetic jockey",
+          "jockey_evidence": "No performance conclusion; synthetic record only",
+          "recent_form": [
+            {
+              "race_date": "2025-12-01",
+              "available_at": "2025-12-02T00:00:00Z",
+              "course": "ST",
+              "surface": "AWT",
+              "distance_m": 1200,
+              "finish": 4,
+              "field_size": 7
+            }
+          ],
+          "win_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:56:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "place_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:56:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "source_ids": [
+            "facts",
+            "odds3"
+          ]
+        },
+        {
+          "horse_no": 5,
+          "horse_id": "S5",
+          "name": "Synthetic 5",
+          "draw": 5,
+          "weight_lb": 120,
+          "jockey": "Synthetic jockey",
+          "jockey_evidence": "No performance conclusion; synthetic record only",
+          "recent_form": [
+            {
+              "race_date": "2025-12-01",
+              "available_at": "2025-12-02T00:00:00Z",
+              "course": "ST",
+              "surface": "AWT",
+              "distance_m": 1200,
+              "finish": 5,
+              "field_size": 7
+            }
+          ],
+          "win_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:56:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "place_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:56:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "source_ids": [
+            "facts",
+            "odds3"
+          ]
+        },
+        {
+          "horse_no": 6,
+          "horse_id": "S6",
+          "name": "Synthetic 6",
+          "draw": 6,
+          "weight_lb": 120,
+          "jockey": "Synthetic jockey",
+          "jockey_evidence": "No performance conclusion; synthetic record only",
+          "recent_form": [
+            {
+              "race_date": "2025-12-01",
+              "available_at": "2025-12-02T00:00:00Z",
+              "course": "ST",
+              "surface": "AWT",
+              "distance_m": 1200,
+              "finish": 6,
+              "field_size": 7
+            }
+          ],
+          "win_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:56:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "place_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:56:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "source_ids": [
+            "facts",
+            "odds3"
+          ]
+        },
+        {
+          "horse_no": 7,
+          "horse_id": "S7",
+          "name": "Synthetic 7",
+          "draw": 7,
+          "weight_lb": 120,
+          "jockey": "Synthetic jockey",
+          "jockey_evidence": "No performance conclusion; synthetic record only",
+          "recent_form": [
+            {
+              "race_date": "2025-12-01",
+              "available_at": "2025-12-02T00:00:00Z",
+              "course": "ST",
+              "surface": "AWT",
+              "distance_m": 1200,
+              "finish": 7,
+              "field_size": 7
+            }
+          ],
+          "win_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:56:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "place_quote": {
+            "notation": "gross_decimal_indicative",
+            "observed_at": "2026-01-01T09:56:30Z",
+            "low": 4,
+            "high": 5
+          },
+          "source_ids": [
+            "facts",
+            "odds3"
+          ]
+        }
+      ],
+      "source_ids": [
+        "facts",
+        "odds3"
+      ]
+    }
+  ],
+  "budget": {
+    "initial_bankroll": "200",
+    "meeting_cap": "40",
+    "unit_stake": 10,
+    "frozen_at": "2026-01-01T09:01:00Z",
+    "source_id": "budget"
+  }
+}

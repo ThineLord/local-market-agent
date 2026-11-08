@@ -5,7 +5,8 @@ import json
 from pathlib import Path
 
 from local_market_agent.horse_racing.models import HistoricalRecord
-from local_market_agent.horse_racing.replay import replay_history
+from local_market_agent.horse_racing.presentation import build_report
+from local_market_agent.horse_racing.research import load_research
 from local_market_agent.horse_racing.results import collect_results, load_results
 
 
@@ -22,6 +23,10 @@ def main():
     replay.add_argument("--record", type=Path, required=True)
     replay.add_argument("--official", type=Path)
     replay.add_argument("--output", type=Path, required=True)
+    replay.add_argument("--research", type=Path)
+    research = sub.add_parser("research")
+    research.add_argument("--input", type=Path, required=True)
+    research.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
         if args.command == "collect":
@@ -38,11 +43,23 @@ def main():
                 )
             )
             return
+        if args.command == "research":
+            report = load_research(args.input)
+            args.output.mkdir(parents=True, exist_ok=False)
+            (args.output / "research-audit.json").write_text(json.dumps(report, indent=2))
+            print(
+                json.dumps(
+                    {"output": str(args.output), "races": len(report["races"]), "orders_created": 0}
+                )
+            )
+            return
         if args.record.stat().st_size > 5_000_000:
             raise ValueError("Historical record exceeds 5 MB")
         record = HistoricalRecord.model_validate_json(args.record.read_text())
         official = load_results(args.official) if args.official else None
-        report = replay_history(record, official)
+        report = build_report(
+            record, official, load_research(args.research) if args.research else None
+        )
         args.output.mkdir(parents=True, exist_ok=False)
         (args.output / "replay.json").write_text(json.dumps(report, indent=2))
         if official:

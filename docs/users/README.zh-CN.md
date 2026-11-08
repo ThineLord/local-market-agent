@@ -126,3 +126,7 @@ LMA_DB_PATH=data/reports/workflow-demo/demo.sqlite python ui/server.py --port 85
 ### 可验证的 NBA 概率流程
 
 [固定 NBA 概率协议](../NBA_PROBABILITY.md)说明公开深度筛选、冻结的比分模型、按时间分离的留出验证和当前比赛证据包。`scripts/build_nba_packet.py` 严格匹配赛前比赛与合同，保留全部来源以便离线复算，不批准订单。现有风控门槛、简报审核和逐意图审批继续生效；已开赛、来源过期、保守净优势不足均阻断执行。历史比分为事后采集，不代表交易回测盈利。
+
+## 香港赛马回放
+
+独立只读页面与原市场并行，分别保存历史投注、官方应得派彩和已兑奖现金。支持原始 T−10/T−3 快照与全场核验；缺失证据保持 UNKNOWN，未宣称赛马模型已验证，当前全部研究决策为 NO BET。参见[赛马指南](../HORSE_REPLAY.zh-CN.md)。
