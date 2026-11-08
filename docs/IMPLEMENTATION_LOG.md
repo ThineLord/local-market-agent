@@ -896,3 +896,8 @@ Validation: deterministic adapter regressions cover fractional sizes, zero/missi
 Separate provenance validity, market/brief preflight, matching research-review receipt, strategy actionability, portfolio risk and order approval. `packet-check --review` verifies the supplied receipt; its diagnostic exit-code contract stays unchanged. Missing briefs cannot receive research-review receipts. Observe/missing-probability briefs no longer appear research-ready; preparation preserves strategy and portfolio-risk veto reasons. Equity projection for preparation is read-only, so rejected attempts cannot create partial baselines; execution still persists/checks equity atomically.
 
 Validation covers missing brief, missing/mismatched review, non-actionable probability, actionable fixture path, and zero-capacity portfolio rejection with unchanged business hash. Full offline suite, Ruff, release guard and diff check run before PR; no fabricated market probability or order approval.
+
+
+## 2026-11-09 — Reproducible public weather observation packet
+
+Added an explicit-network, six-GET Kalshi/NWS collector scoped to NYC daily-high markets. New isolated directories retain source receipts, same-event depth scan, pre-brief and post-brief diagnostics. The market is fetched last; observation time is the actual retrieval time. Output is an observation-only brief with null probability and clear trade vetoes, never a fabricated estimate/review/order. Source-review and order-approval remain separate. Deterministic tests cover scope/network opt-in, exact market identity, no-overwrite, file integrity, bounded requests and non-actionable output. Full offline/Ruff/release checks run before PR; actual public acceptance recorded in the version report.
