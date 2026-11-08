@@ -64,7 +64,9 @@ def dashboard_http():
     thread.join(timeout=2)
 
 
-@pytest.mark.parametrize("path", ["/", "/app.js", "/bull.js", "/theme.js", "/style.css", "/favicon.svg", "/api/health"])
+@pytest.mark.parametrize(
+    "path", ["/", "/app.js", "/bull.js", "/theme.js", "/style.css", "/favicon.svg", "/api/health"]
+)
 def test_local_static_routes_and_security_headers(dashboard_http, path):
     connection = HTTPConnection("127.0.0.1", dashboard_http)
     connection.request("GET", path)
@@ -76,7 +78,9 @@ def test_local_static_routes_and_security_headers(dashboard_http, path):
     connection.close()
 
 
-@pytest.mark.parametrize("path", ["/.env", "/../pyproject.toml", "/data/local_market_agent.sqlite", "/api/orders"])
+@pytest.mark.parametrize(
+    "path", ["/.env", "/../pyproject.toml", "/data/local_market_agent.sqlite", "/api/orders"]
+)
 def test_private_files_and_unknown_api_are_not_served(dashboard_http, path):
     connection = HTTPConnection("127.0.0.1", dashboard_http)
     connection.request("GET", path)
@@ -84,7 +88,9 @@ def test_private_files_and_unknown_api_are_not_served(dashboard_http, path):
     connection.close()
 
 
-@pytest.mark.parametrize("headers", [{"Host": "attacker.test"}, {"Origin": "https://attacker.test"}])
+@pytest.mark.parametrize(
+    "headers", [{"Host": "attacker.test"}, {"Origin": "https://attacker.test"}]
+)
 def test_foreign_hosts_and_origins_are_rejected(dashboard_http, headers):
     connection = HTTPConnection("127.0.0.1", dashboard_http)
     connection.request("GET", "/api/dashboard", headers=headers)
@@ -97,3 +103,35 @@ def test_dashboard_has_no_write_routes(dashboard_http):
     connection.request("POST", "/api/dashboard", body=b"{}")
     assert connection.getresponse().status == 501
     connection.close()
+
+
+def test_horse_workspace_stays_parallel_and_read_only(repo, snapshot, tmp_path):
+    from datetime import UTC, datetime
+
+    from local_market_agent.horse_racing.models import HistoricalRecord
+
+    repo.save_market_snapshot(snapshot)
+    before = repo.db_path.read_bytes()
+    workspace = tmp_path / "horse"
+    workspace.mkdir()
+    record = HistoricalRecord(
+        meeting_date="2026-01-01",
+        course="ST",
+        initial_bankroll="200",
+        unit_stake="10",
+        provenance="Synthetic",
+        recorded_at=datetime(2026, 1, 2, tzinfo=UTC),
+        races=[dict(race_no=1, participation="NOT_PLACED")],
+    )
+    (workspace / "user-history.json").write_text(record.model_dump_json())
+    settings = replace(load_settings(), db_path=repo.db_path)
+    payload = dashboard_payload(settings, horse_workspace=workspace)
+    assert payload["snapshots"][0].snapshot_id == snapshot.snapshot_id
+    assert payload["horse_racing"]["report"]["currency"] == "HKD"
+    assert payload["horse_racing"]["report"]["orders_created"] == 0
+    assert repo.db_path.read_bytes() == before
+    (workspace / "user-history.json").write_text("{}")
+    bad = dashboard_payload(settings, horse_workspace=workspace)
+    assert bad["horse_racing"]["status"] == "invalid"
+    assert bad["snapshots"][0].snapshot_id == snapshot.snapshot_id
+    assert repo.db_path.read_bytes() == before

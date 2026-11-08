@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "input_sha256": "635deea9975f43ee7c7da00e50bd8e6015e7df0001cf267fe38fd20bb628c996",
+  "source_hashes": {
+    "facts": "888d8f37aaa609af786b33407c5691bd26b09aa20bffd5992195846defc49d29",
+    "odds3": "fe210301465afdeda4112d784c3007f482393fbf417efa49b7b52a590fd20ff3",
+    "budget": "f04848e727ac47ef290c41649012d71de647e8c29883bbb23e04e988ccc083aa",
+    "archive": "0022f0aa7e7b6523163f9dad44365715c8ab789d968b5c8fb5176ff3cedbcc33"
+  },
+  "reviewer": "Synthetic test reviewer",
+  "reviewed_at": "2026-01-01T12:00:00Z",
+  "conclusion": "supported_by_archived_evidence",
+  "availability_evidence_ids": [
+    "archive"
+  ],
+  "rationale": "Synthetic test only; not real timing evidence"
+}

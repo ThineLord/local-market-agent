@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from local_market_agent.adapters import FixtureAdapter  # noqa: E402
 from local_market_agent.config import load_settings  # noqa: E402
+from local_market_agent.horse_racing.presentation import workspace_payload  # noqa: E402
 from local_market_agent.operations.watchlist import ScreenReport  # noqa: E402
 from local_market_agent.storage import SQLiteRepository  # noqa: E402
 from ui.app import _audit_chain_rows, _phase7_operations_view_model  # noqa: E402
@@ -61,7 +62,7 @@ def encode(value):
     raise TypeError(f"Unsupported dashboard value: {type(value).__name__}")
 
 
-def dashboard_payload(settings=None, screen_report_path=None) -> dict:
+def dashboard_payload(settings=None, screen_report_path=None, horse_workspace=None) -> dict:
     from local_market_agent.workflow import workflow_status
     settings = settings or load_settings()
     repository = DashboardRepository(settings.db_path)
@@ -92,6 +93,7 @@ def dashboard_payload(settings=None, screen_report_path=None) -> dict:
         "audit": _audit_chain_rows(repository),
         "operations": _phase7_operations_view_model(repository),
         "screening": screening_payload(screen_report_path),
+        "horse_racing": workspace_payload(horse_workspace),
         "meta": {
             "loaded_at": datetime.now(UTC).isoformat(),
             "database_available": repository.db_path.exists(),
@@ -158,6 +160,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             try:
                 body = json.dumps(dashboard_payload(
                     screen_report_path=getattr(self.server, "screen_report_path", None),
+                    horse_workspace=getattr(self.server, "horse_workspace", None),
                 ), default=encode, allow_nan=False).encode()
                 self.reply(200, body)
             except Exception:
@@ -176,9 +179,11 @@ def main():
     parser = argparse.ArgumentParser(description="Local Market Agent read-only dashboard")
     parser.add_argument("--port", type=int, default=8502)
     parser.add_argument("--screen-report", type=Path, help="Saved watchlist screening JSON")
+    parser.add_argument("--horse-workspace", type=Path, help="Local history, official/ and optional research/ directory")
     args = parser.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), DashboardHandler)
     server.screen_report_path = args.screen_report
+    server.horse_workspace = args.horse_workspace
     print(f"Local Market Agent: http://127.0.0.1:{server.server_port}", flush=True)
     try:
         server.serve_forever()

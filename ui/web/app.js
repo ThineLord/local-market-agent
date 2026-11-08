@@ -22,8 +22,8 @@ const icons={
   export:'<path d="M12 3v12m-4-4 4 4 4-4M4 15v5h16v-5"/>',menu:'<path d="M4 6h16M4 12h16M4 18h16"/>',external:'<path d="M14 3h7v7M21 3 10 14M10 5H4v15h15v-6"/>'
 };
 const icon=name=>`<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${icons[name]||icons.briefs}</svg>`;
-const names={overview:'Overview',watchlist:'Watchlist',briefs:'Market Brief',signals:'Signals',risk:'Risk Decisions',ledger:'Paper Ledger',audit:'Audit Chain',performance:'Performance Report',operations:'Phase 7 Operations',settings:'Settings'};
-const groups=[['', ['overview']],['RESEARCH',['watchlist','briefs','signals']],['PORTFOLIO',['risk','ledger','audit','performance']],['WORKSPACE',['operations']]];
+const names={horse:'Hong Kong Racing',overview:'Overview',watchlist:'Watchlist',briefs:'Market Brief',signals:'Signals',risk:'Risk Decisions',ledger:'Paper Ledger',audit:'Audit Chain',performance:'Performance Report',operations:'Phase 7 Operations',settings:'Settings'};
+const groups=[['', ['overview']],['RESEARCH',['watchlist','briefs','signals','horse']],['PORTFOLIO',['risk','ledger','audit','performance']],['WORKSPACE',['operations']]];
 $('#navigation').innerHTML=groups.map(([label,pages])=>`${label?`<div class="nav-section">${label}</div>`:''}${pages.map(p=>`<a href="#${p}" class="nav-item" data-page="${p}">${icon(p)}<span>${names[p]}</span></a>`).join('')}`).join('');
 document.querySelector('[data-icon="settings"]').innerHTML=icon('settings');
 $('#refresh').innerHTML=icon('refresh');$('#motion-toggle').innerHTML=icon('pause');$('#menu-toggle').innerHTML=icon('menu');$('#close-detail').innerHTML=icon('close');
@@ -35,6 +35,7 @@ try{motionPaused=localStorage.getItem('lma-motion-paused')==='true';}catch{}
 setMotion(motionPaused);
 syncAppearance();
 window.addEventListener('lma-theme-change',syncAppearance);
+const hkd=v=>v==null?'UNKNOWN':`HK$${Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 const human=s=>String(s??'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 const n=(v,d=2)=>v==null?'—':Number(v).toLocaleString('en-US',{maximumFractionDigits:d});
 const money=v=>v==null?'—':Number(v).toLocaleString('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2});
@@ -206,7 +207,7 @@ function showDetail(index){
 }
 function render(){
   if(!data)return;details=[];activeTable=null;
-  const renderers={overview,watchlist,briefs,signals,risk,ledger,audit,performance:performancePage,operations,settings:settingsPage};
+  const renderers={horse:horseRacing,overview,watchlist,briefs,signals,risk,ledger,audit,performance:performancePage,operations,settings:settingsPage};
   const countNotice=Object.values(data.meta.counts).some(c=>c>data.meta.record_limit)?`<p class="notice">This workspace contains more than ${data.meta.record_limit} records in a category. The dashboard loads the newest ${data.meta.record_limit}; older records remain in the local database.</p>`:'';
   $('#main').innerHTML=`<div class="page">${!data.meta.database_available?'<div class="notice">No local database found. The watchlist shows a fixture preview; other sections will remain empty until records are created.</div>':''}${state.page==='overview'?'':countNotice}${renderers[state.page]()}</div>`;
   syncAppearance();
@@ -266,7 +267,7 @@ document.addEventListener('click',async event=>{
   if(action==='copy-json'&&currentDetail){try{await navigator.clipboard.writeText(JSON.stringify(currentDetail.record,null,2));toast('Record copied.');}catch{toast('Copy unavailable. Use Download JSON instead.');}}
 });
 document.addEventListener('input',event=>{if(event.target.id==='table-search'){state.search=event.target.value;state.pageIndex=0;refreshTable();}});
-document.addEventListener('change',event=>{if(event.target.id==='theme-select')window.lmaTheme.setPreference(event.target.value);if(event.target.id==='table-filter'){state.filter=event.target.value;state.pageIndex=0;refreshTable();}if(event.target.id==='report-select'){state.report=Number(event.target.value);render();}});
+document.addEventListener('change',event=>{if(event.target.id==='theme-select')window.lmaTheme.setPreference(event.target.value);if(event.target.id==='table-filter'){state.filter=event.target.value;state.pageIndex=0;refreshTable();}if(event.target.id==='horse-race-select'){state.horseRace=Number(event.target.value);state.search='';state.pageIndex=0;render();}if(event.target.id==='report-select'){state.report=Number(event.target.value);render();}});
 $('#refresh').addEventListener('click',load);
 $('#motion-toggle').addEventListener('click',()=>{setMotion(!motionPaused);if(state.page==='settings')render();});
 $('#menu-toggle').addEventListener('click',()=>{const open=!$('#sidebar').classList.contains('open');$('#sidebar').classList.toggle('open',open);$('#mobile-shade').classList.toggle('active',open);$('#menu-toggle').setAttribute('aria-expanded',String(open));$('#sidebar').inert=!open&&narrowScreen.matches;});
@@ -286,3 +287,23 @@ narrowScreen.addEventListener('change',closeMenu);
 $('.skip-link').addEventListener('click',e=>{e.preventDefault();$('#main').focus();});
 window.addEventListener('hashchange',route);
 route();load();
+
+function horseCurve(points){
+  if(points.length<2)return '<p class="note">Complete race returns are not available.</p>';
+  const vals=points.map(p=>p.balance),lo=Math.min(...vals)-5,hi=Math.max(...vals)+5;
+  const xy=points.map((p,i)=>[75+i/(points.length-1)*785,145-(p.balance-lo)/(hi-lo)*110]);
+  return `<svg class="chart" viewBox="0 0 900 180" role="img" aria-label="Race-close HKD entitlement balance, not redeemed cash">${[0,1,2].map(i=>`<line x1="75" x2="860" y1="${35+i*55}" y2="${35+i*55}" stroke="var(--line)"/><text x="0" y="${39+i*55}">${hkd(hi-i*(hi-lo)/2)}</text>`).join('')}<polyline points="${xy.map(p=>p.join(',')).join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2"/>${xy.map(([x,y],i)=>`<circle cx="${x}" cy="${y}" r="3" fill="var(--accent)"><title>R${points[i].race_no}: ${hkd(points[i].balance)}</title></circle><text x="${x}" y="173" text-anchor="middle">R${points[i].race_no}</text>`).join('')}</svg>`;
+}
+function horseRacing(){
+  const saved=data.horse_racing||{status:'missing'},r=saved.report;
+  let content=heading('RESEARCH / HK','Hong Kong Racing','Historical replay and pre-race evidence checks · 香港赛马回放');
+  if(!r)return content+empty(saved.status==='invalid'?'Racing sources failed validation':'No racing workspace loaded','Load a local historical record and verified public sources. Existing market records remain available.','python ui/server.py --horse-workspace data/horse');
+  const tab=['fields','research'].includes(state.tab)?state.tab:'summary',e=r.official_entitlement;
+  content+=`<div class="notice">${esc(r.meeting_date)} · ${esc(r.course)} · HKD history is separate from the paper portfolio. Official entitlements are not redeemed cash or evidence of a profitable algorithm.</div>`+tabs([['summary','Historical ledger'],['fields','Full field'],['research','Pre-race checks']],tab);
+  if(tab==='summary')return content+`<div class="stat-grid">${metric('Official entitlement',hkd(e.gross_return),'Gross returns including stakes')}${metric('Net entitlement P&L',hkd(e.net_profit),'Based on reported tickets; no cash receipt verification')}${metric('Entitlement balance',hkd(e.balance),`Initial ${hkd(r.initial_bankroll)}`)}${metric('Redeemed cash balance',hkd(r.cash.redeemed_balance),r.cash.status)}</div><div class="stat-grid">${metric('Tickets / bet races',`${r.ticket_count} / ${r.bet_races}`,`${hkd(r.total_stake)} total stake`)}${metric('WIN / PLACE hit rate',`${pct(r.pools.WIN.hit_rate)} / ${pct(r.pools.PLACE.hit_rate)}`,'Separate pools; same-race tickets are correlated')}${metric('Stake ROI',pct(e.roi,2),`Bankroll return ${pct(e.bankroll_return,2)}`)}${metric('Race-close max drawdown',hkd(e.max_drawdown),`${pct(e.max_drawdown_fraction,2)} · not intrarace cash drawdown`)}</div><div class="panel history-chart"><h2>Race-close entitlement curve</h2>${horseCurve(e.curve)}<p class="note">Arithmetic replay of reported tickets. Original predictions and probability calibration: UNKNOWN.</p></div>`+toolbar('Search races or tickets…')+table(r.races,[{label:'Race',render:x=>`R${x.race_no}`},{label:'Actual record',render:x=>esc(x.participation)},{label:'Tickets',render:x=>esc(x.tickets.map(t=>`#${t.horse_no} ${t.pool}`).join(' · ')||'None')},{label:'Stake',render:x=>hkd(x.stake)},{label:'Provisional gross',render:x=>hkd(x.provisional_gross_return)},{label:'Official gross',render:x=>hkd(x.official_gross_return)},{label:'Net P&L',render:x=>hkd(x.official_net_profit)},{label:'Cash received',render:x=>hkd(x.redeemed_cash)}],{title:'Reported tickets and separate return tracks'})+`<p class="note">NOT_PLACED is an unbet race, not a loss or a historical NO BET recommendation. Precommitted budget adherence: ${esc(r.risk.budget_adherence)}.</p>`;
+  const raceNo=Number(state.horseRace)||1,field=r.full_fields.find(x=>x.race_no===raceNo),audit=r.research.races.find(x=>x.race_no===raceNo);
+  content+=`<div class="toolbar"><label for="horse-race-select">Race</label><select id="horse-race-select" class="select">${r.races.map(x=>`<option value="${x.race_no}" ${raceNo===x.race_no?'selected':''}>R${x.race_no}</option>`).join('')}</select></div>`;
+  if(tab==='fields')return content+`<div class="notice">Complete declared field · ${esc(field?.distance_m||'UNKNOWN')} m · ${esc(field?.course_detail||'UNKNOWN')} · ${esc(field?.going||'UNKNOWN')}. Retrieved retrospectively: these facts cannot reconstruct the original pre-race forecast.</div>`+toolbar('Search all runners…')+table(field?.runners||[],[{label:'No.',render:x=>esc(x.horse_no)},{label:'Horse',render:x=>`<strong>${esc(x.name)}</strong><span class="subline">${esc(x.horse_id)}</span>`},{label:'Draw',render:x=>esc(x.draw)},{label:'Weight',render:x=>esc(x.handicap_weight)},{label:'Jockey',render:x=>esc(x.jockey)},{label:'Rating',render:x=>esc(x.rating)},{label:'Trainer',render:x=>esc(x.trainer)},{label:'Original fit / value',render:()=> 'UNKNOWN'}],{title:`R${raceNo} · every declared runner`,emptyDescription:'A verified full-field source has not been supplied.'})+`<p class="note">Strengths, weaknesses, recent form and original reasoning remain UNKNOWN until original evidence is supplied. ${safeUrl(field?.source_url)?`<a href="${esc(safeUrl(field.source_url))}" target="_blank" rel="noopener noreferrer">Official declarations</a>`:''}</p>`;
+  const comparison=Object.entries(audit.checkpoints).flatMap(([stage,rows])=>rows.map(x=>({...x,stage})));
+  return content+`<div class="stat-grid">${metric('Current replay decision','NO BET','Not a reconstruction of the historical recommendation')}${metric('Validated probability','UNKNOWN','No racing probability model validated')}${metric('Original analysis',comparison.length?'Imported transcription':'UNKNOWN','WIN and PLACE remain separate')}${metric('Orders created','0','Research-only path')}</div><section class="panel panel-pad"><h2>Blocking reasons · 阻断原因</h2><ul>${audit.blockers.map(b=>`<li>${esc(b)}</li>`).join('')}</ul><p class="note">Availability review: ${esc(r.research.availability_review?.conclusion||'UNKNOWN')}. Hashes bind evidence and transcription; timestamps require independent archival review.</p></section>`+toolbar('Search checkpoint comparisons…')+table(comparison,[{label:'Stage',render:x=>esc(x.stage)},{label:'Horse',render:x=>esc(`#${x.horse_no} ${x.name}`)},{label:'Strength observations',render:x=>esc(x.strength_observations.join('; '))},{label:'Weakness observations',render:x=>esc(x.weakness_observations.join('; '))},{label:'Uncertainty',render:x=>esc(x.uncertainties.join('; '))},{label:'WIN / PLACE original p',render:x=>`${pct(x.pools.WIN.original_probability)} / ${pct(x.pools.PLACE.original_probability)}`}],{title:`R${raceNo} · original checkpoint comparison`,emptyTitle:'Original snapshots pending',emptyDescription:'T−10 and T−3 odds, form and original analysis are UNKNOWN. No reasons or probabilities are reconstructed from race results.'});
+}
