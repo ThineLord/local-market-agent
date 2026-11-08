@@ -361,10 +361,13 @@ def paper_replay(intent_id: Annotated[str, typer.Option()], db: Annotated[Path |
 
 
 @app.command()
-def packet_check(packet: Annotated[Path, typer.Option()]) -> None:
+def packet_check(
+    packet: Annotated[Path, typer.Option()],
+    review: Annotated[Path | None, typer.Option(help="Validate an exact research review receipt.")] = None,
+) -> None:
     from local_market_agent.evidence_packet import packet_status
     try:
-        typer.echo(json.dumps(packet_status(packet), sort_keys=True))
+        typer.echo(json.dumps(packet_status(packet, review_path=review), sort_keys=True))
     except (ValueError, OSError) as exc:
         typer.echo(json.dumps({"valid": False, "errors": [str(exc)]}))
         raise typer.Exit(2) from exc

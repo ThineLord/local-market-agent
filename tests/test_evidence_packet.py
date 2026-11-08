@@ -33,8 +33,10 @@ def settlement_packet(path, now):
 def test_evidence_to_review_approval_execution_settlement(repo, tmp_path):
     path = demo_packet(tmp_path / "packet", now=NOW)
     status = packet_status(path, now=NOW)
-    assert status["valid"] and status["research_ready"]
+    assert status["valid"] and status["preflight_ready"]
+    assert not status["research_ready"] and status["research_review"]["status"] == "missing"
     review = reviewed(path)
+    assert packet_status(path, now=NOW, review_path=review)["research_ready"]
     settings = Settings(db_path=repo.db_path)
     intent = prepare_packet(repo, settings, path, review, now=NOW)
     service = PaperExecutionService(repo, settings)
@@ -149,3 +151,49 @@ def test_old_research_cannot_be_used_as_final_settlement(repo, tmp_path, mutatio
         reviewed(settled, "settlement", now=NOW)
     assert business_hash(repo) == before
     assert repo.list_positions()[0].is_open
+
+
+def test_no_brief_cannot_be_research_reviewed(tmp_path):
+    path = demo_packet(tmp_path / "packet", now=NOW)
+    payload = json.loads(path.read_text())
+    payload["brief"] = None
+    path.write_text(json.dumps(payload))
+    assert "brief_missing" in " ".join(packet_status(path, now=NOW)["blockers"])
+    with pytest.raises(ValueError, match="requires a brief"):
+        reviewed(path)
+
+
+def test_observe_brief_and_mismatched_review_are_not_ready(repo, tmp_path):
+    path = demo_packet(tmp_path / "packet", now=NOW)
+    payload = json.loads(path.read_text())
+    payload["brief"].update(estimated_probability=None, recommended_action="observe")
+    path.write_text(json.dumps(payload))
+    review = reviewed(path)
+    status = packet_status(path, now=NOW, review_path=review)
+    assert status["preflight_ready"] and not status["research_ready"]
+    assert status["research_review"]["status"] == "valid"
+    assert status["strategy"]["action"] == "observe"
+    assert "Missing market or agent probability" in " ".join(status["blockers"])
+    before = business_hash(repo)
+    with pytest.raises(ValueError, match="strategy_not_actionable"):
+        prepare_packet(repo, Settings(db_path=repo.db_path), path, review, now=NOW)
+    assert business_hash(repo) == before
+    assert repo.count("equity_baselines") == 0
+    payload["brief"]["thesis"] += " changed"
+    path.write_text(json.dumps(payload))
+    status = packet_status(path, now=NOW, review_path=review)
+    assert status["research_review"]["status"] == "invalid"
+    assert not status["research_ready"]
+
+
+def test_portfolio_risk_rejection_does_not_write_equity(repo, tmp_path):
+    from dataclasses import replace
+    path = demo_packet(tmp_path / "packet", now=NOW)
+    review = reviewed(path)
+    settings = Settings(db_path=repo.db_path)
+    settings = replace(settings, risk=replace(settings.risk, max_open_positions=0))
+    before = business_hash(repo)
+    with pytest.raises(ValueError, match="Maximum open positions"):
+        prepare_packet(repo, settings, path, review, now=NOW)
+    assert business_hash(repo) == before
+    assert repo.count("equity_baselines") == 0

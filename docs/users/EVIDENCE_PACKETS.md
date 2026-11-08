@@ -27,3 +27,12 @@ Settlement writes closing fills and a source/review receipt atomically. The same
 Run the documented isolated demo to obtain a complete concrete packet example. Demo receipts are explicitly synthetic and are not human review of public market evidence. A public sample with missing fields remains blocked; that is a useful validation result, not permission to fabricate the fields. Raw public receipts remain local generated artifacts, not bundled market datasets.
 
 The final settlement receipt URL must exactly match `resolution_source`. Its collection time must be at or after `resolved_at` and no later than the settled snapshot. When publication time is known, it must also be at or after resolution. A pre-resolution research article cannot substitute for the final source.
+
+
+## Diagnosing blocked packets
+
+`lma packet-check --packet packet/packet.json --review packet/research-review.json` validates an optional research review against the exact packet. `valid` means source integrity; `preflight_ready` means market/brief checks passed; `research_ready` additionally requires a matching research review and an actionable strategy. Neither is portfolio-risk or order approval. `checks`, `research_review`, `strategy`, and `blockers` expose each decision separately. `packet-check` remains a diagnostic command: exit 0 means a valid packet was inspected, not that an order is allowed.
+
+Author the brief before `packet-review --scope research`; a source-only package cannot be stamped as a reviewed brief. An honest `observe` brief with no defensible probability may be reviewed, but remains non-actionable. `packet-prepare` preserves the strategy/risk rejection reasons and does not write equity baselines on refusal. The preparation service still checks portfolio risk; execution rechecks current risk and requires its separate per-intent approval.
+
+For current Kalshi data, liquidity is conservative best-quote buy capacity in USD: the smaller of `YES ask × YES ask size` and `(1 − YES bid) × YES bid size`. It is not whole-book liquidity or traded volume. Unknown capacity stays unknown; genuinely small capacity stays blocked by the unchanged $100 default.
