@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -75,7 +76,7 @@ class KalshiAdapter:
             last_price=_price(payload, "last_price"),
             market_implied_probability=implied,
             volume=_float_or_none(payload.get("volume_fp", payload.get("volume"))),
-            liquidity=_float_or_none(payload.get("liquidity_dollars", payload.get("liquidity"))),
+            liquidity=liquidity_details(payload)["value_usd"],
         )
 
 
@@ -98,3 +99,41 @@ def _float_or_none(value: object) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def liquidity_details(payload: dict[str, Any]) -> dict[str, Any]:
+    """Conservative buy capacity at the best YES and NO asks, in USD.
+
+    YES ask size is the resting NO bid size; YES bid size is the resting
+    YES bid size available to a buyer of NO at (1 - YES bid). No volume or
+    open-interest fallback: those describe past trades/holdings, not capacity.
+    """
+    size_keys = ("yes_bid_size_fp", "yes_ask_size_fp")
+    if any(key in payload for key in size_keys):
+        bid, ask = _price(payload, "yes_bid"), _price(payload, "yes_ask")
+        bid_size, ask_size = (_nonnegative(payload.get(key), key) for key in size_keys)
+        yes_usd = ask * ask_size if ask is not None and ask_size is not None else None
+        no_usd = (1 - bid) * bid_size if bid is not None and bid_size is not None else None
+        return {"basis": "minimum_best_ask_buy_capacity_usd", "unit": "USD",
+                "value_usd": min(yes_usd, no_usd) if yes_usd is not None and no_usd is not None else None,
+                "yes_buy_capacity_usd": yes_usd, "no_buy_capacity_usd": no_usd,
+                "yes_ask_size_contracts": ask_size, "yes_bid_size_contracts": bid_size}
+    if "liquidity_dollars" in payload:
+        value = _nonnegative(payload["liquidity_dollars"], "liquidity_dollars")
+        basis = "legacy_reported_liquidity_dollars"
+    else:
+        cents = _nonnegative(payload.get("liquidity"), "liquidity")
+        value = cents / 100 if cents is not None else None
+        basis = "legacy_reported_liquidity_cents" if cents is not None else "unavailable"
+    return {"basis": basis, "unit": "USD", "value_usd": value}
+
+
+def _nonnegative(value: object, name: str) -> float | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"Invalid Kalshi {name}")
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed < 0:
+        raise ValueError(f"Invalid Kalshi {name}")
+    return parsed
