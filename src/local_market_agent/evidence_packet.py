@@ -13,8 +13,8 @@ from local_market_agent.paper.ledger import PaperLedger
 from local_market_agent.risk import RiskEngine
 from local_market_agent.risk.equity import (
     loss_metrics,
-    observe_equity,
     observe_equity_in_transaction,
+    project_equity,
 )
 from local_market_agent.risk.preflight import portfolio_marks, preflight, snapshot_checks
 from local_market_agent.schemas.models import (
@@ -123,19 +123,54 @@ def load_packet(path, *, now=None):
     return packet
 
 
-def packet_status(path, settings=None, *, now=None):
+def packet_status(path, settings=None, *, now=None, review_path=None):
+    """Explain source integrity, market/brief checks, review and strategy separately.
+
+    This read-only assessment is not portfolio risk approval or order approval.
+    """
     now = utc(now)
+    settings = settings or Settings()
     packet = load_packet(path, now=now)
-    checks = preflight(packet.snapshot, packet.brief, settings or Settings(), now) if packet.brief else snapshot_checks(packet.snapshot, packet.snapshot.market.market_id, settings or Settings(), now)
+    checks = preflight(packet.snapshot, packet.brief, settings, now) if packet.brief else snapshot_checks(packet.snapshot, packet.snapshot.market.market_id, settings, now)
     blockers = [f"{c.code}: {c.message}" for c in checks if not c.passed]
+    preflight_ready = not blockers and packet.brief is not None
     if packet.brief is None:
-        blockers.append("Reviewed research brief required before preparing an intent")
+        blockers.append("brief_missing: Research brief required; source collection is not a brief review")
+    review_state, review_error = "missing", None
+    if review_path is not None:
+        try:
+            checked_review(packet, review_path, "research", now)
+            review_state = "valid" if packet.brief else "invalid"
+            if not packet.brief:
+                review_error = "Research review requires a brief"
+        except (ValueError, OSError) as exc:
+            review_state, review_error = "invalid", str(exc)
+    if review_state != "valid":
+        blockers.append("research_review_" + review_state + ": " + (review_error or "Review this exact packet and provide --review; order approval is separate"))
+    strategy = None
+    if packet.brief:
+        signal = PredictionMarketEdgeStrategy(settings.risk).generate_signal(packet.brief, packet.snapshot)
+        actionable = signal.action in {"paper_buy_yes", "paper_buy_no"}
+        strategy = {"action": str(signal.action), "actionable": actionable, "reason": signal.rationale,
+                    "estimated_probability": signal.agent_probability, "edge": signal.edge}
+        if not actionable:
+            blockers.append("strategy_not_actionable: " + signal.rationale)
+    ready = preflight_ready and review_state == "valid" and strategy is not None and strategy["actionable"]
     return {"valid": True, "packet_hash": content_hash(packet), "market_id": packet.snapshot.market.market_id,
             "observed_at": packet.snapshot.as_of.isoformat(), "source_count": len(packet.sources),
             "evidence_count": len(packet.evidence), "blockers": blockers,
-            "research_ready": not blockers, "review_required": True,
+            "checks": [{"code": c.code, "passed": c.passed, "message": c.message} for c in checks],
+            "preflight_ready": preflight_ready, "research_ready": ready,
+            "brief_present": packet.brief is not None,
+            "brief_assessment": {"recommended_action": str(packet.brief.recommended_action),
+                "estimated_probability": packet.brief.estimated_probability,
+                "confidence": packet.brief.confidence, "evidence_quality": packet.brief.evidence_quality,
+                "must_not_trade_reasons": packet.brief.must_not_trade_reasons} if packet.brief else None,
+            "research_review": {"status": review_state, "error": review_error},
+            "strategy": strategy, "review_required": review_state != "valid",
+            "portfolio_risk": "not_evaluated", "order_approval": "not_requested",
             "settlement_available": packet.settlement is not None,
-            "note": "Hashes/times verified; source meaning and probability estimates require reviewer judgment"}
+            "note": "Source integrity and research readiness are not portfolio risk approval or per-intent order approval"}
 
 
 def review_packet(path, *, actor, reason, scope="research", now=None):
@@ -143,6 +178,8 @@ def review_packet(path, *, actor, reason, scope="research", now=None):
     packet = load_packet(path, now=now)
     if not actor.strip() or not reason.strip():
         raise ValueError("Reviewer and rationale required")
+    if scope == "research" and packet.brief is None:
+        raise ValueError("Research review requires a brief; collect sources, author a brief, then review the exact packet")
     if scope == "settlement" and packet.settlement is None:
         raise ValueError("No settlement evidence to review")
     return PacketReview(packet_hash=content_hash(packet), actor=actor.strip(), reason=reason.strip(),
@@ -164,14 +201,16 @@ def prepare_packet(repo, settings, path, review_path, *, now=None):
     review = checked_review(packet, review_path, "research", now)
     if repo.load_settlement_receipt(packet.snapshot.market.market_id):
         raise ValueError("Market already settled in this paper ledger")
-    status = packet_status(path, settings, now=now)
+    status = packet_status(path, settings, now=now, review_path=review_path)
     if status["blockers"]:
         raise ValueError("; ".join(status["blockers"]))
     signal = PredictionMarketEdgeStrategy(settings.risk).generate_signal(packet.brief, packet.snapshot)
     signal.metadata.update({"packet_hash": content_hash(packet), "evidence_review": review.model_dump(mode="json")})
     marks = portfolio_marks(repo, packet.snapshot, settings, now)
-    portfolio = observe_equity(repo, PaperLedger(repo, settings.risk).snapshot_portfolio(marks, persist=False), now)
+    portfolio = project_equity(repo, PaperLedger(repo, settings.risk).snapshot_portfolio(marks, persist=False), now)
     risk = RiskEngine(settings.risk).evaluate_signal(signal, open_positions=portfolio.open_positions, **loss_metrics(portfolio))
+    if not risk.is_approved:
+        raise ValueError("Risk veto: " + "; ".join(risk.reasons) + "; strategy: " + signal.rationale)
     return PaperExecutionService(repo, settings).prepare(signal, risk, packet.snapshot, packet.brief,
         now=now, simulation=packet.snapshot.market.platform == "fixture")
 

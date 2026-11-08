@@ -27,3 +27,12 @@ lma paper-replay --intent-id INTENT_ID --db data/experiment.sqlite
 隔离演示会生成完整可查看的示例证据包；其中审核凭据明确标记为合成演示，不是对公开市场证据的人工审核。真实样本字段不完整时继续阻断，这也是有效验证结果。公开原始响应保留为本地生成产物，不作为内置市场数据集发布。
 
 最终结算凭据的 URL 必须与 `resolution_source` 完全一致，采集时间必须不早于 `resolved_at` 且不晚于结算快照；已知发布时间也必须不早于结果时间。结果产生前的研究材料不能替代最终结算来源。
+
+
+## 定位阻断原因
+
+`lma packet-check --packet packet/packet.json --review packet/research-review.json` 可验证审核凭据是否对应包的确切内容。`valid` 仅表示来源完整性；`preflight_ready` 表示行情/简报硬性检查通过；`research_ready` 还要求匹配的研究审核与可行动策略。以上均不是组合风控批准或订单审批。`checks`、`research_review`、`strategy`、`blockers` 分别列出各阶段。`packet-check` 的退出码 0 只表示已检查有效证据包，不代表可以下单。
+
+先写简报，再进行 `packet-review --scope research`；只有来源文件的包不能标记为简报已审核。没有可靠概率估计时，可以如实编写并审核 `observe` 简报，但仍不能形成交易意图。`packet-prepare` 保留真实策略/风险拒绝原因，拒绝时不会写入权益基线。准备阶段仍检查组合风险，执行阶段再次检查并要求独立的逐意图审批。
+
+当前 Kalshi 流动性使用双方顶档可买容量中较小的美元值：`min(YES ask × YES ask size, (1 − YES bid) × YES bid size)`。这不是整簿流动性或成交量；缺少数据保持未知，实际容量过小仍被默认 100 美元门槛阻断。

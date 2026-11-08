@@ -138,7 +138,7 @@ def brief_checks(
     check(
         "brief_veto",
         not brief.must_not_trade_reasons,
-        "Any must-not-trade reason in the brief blocks a research candidate.",
+        "Brief veto: " + "; ".join(brief.must_not_trade_reasons) if brief.must_not_trade_reasons else "No brief veto.",
     )
     check(
         "resolution",

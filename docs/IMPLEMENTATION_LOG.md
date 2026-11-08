@@ -889,3 +889,10 @@
 Current public market responses omit legacy liquidity but include fixed-point best bid/ask contract sizes. Normalize conservatively to USD: `min(YES ask × YES ask size, (1 − YES bid) × YES bid size)`. This is capacity to buy at the best quotes on both outcome sides, not aggregate order-book liquidity, volume, or open interest. Missing sides remain unknown; zero stays zero; malformed/nonfinite sizes are rejected. Legacy cents are divided by 100, dollar fields take precedence. No snapshot schema change, preserving existing sealed input shapes. Preflight now reports actual versus required liquidity.
 
 Validation: deterministic adapter regressions cover fractional sizes, zero/missing/invalid depth, units and no volume substitution; full Ruff/pytest/release checks recorded in the PR. Read-only probe of `KXHIGHNY-26NOV09-T57` observed YES ask 0.13 × 10 = $1.30 and NO ask 0.88 × 30 = $26.40, correctly below the default $100 minimum. Public raw responses remain local ignored artifacts.
+
+
+## 2026-11-09 — Exact packet review and actionable readiness
+
+Separate provenance validity, market/brief preflight, matching research-review receipt, strategy actionability, portfolio risk and order approval. `packet-check --review` verifies the supplied receipt; its diagnostic exit-code contract stays unchanged. Missing briefs cannot receive research-review receipts. Observe/missing-probability briefs no longer appear research-ready; preparation preserves strategy and portfolio-risk veto reasons. Equity projection for preparation is read-only, so rejected attempts cannot create partial baselines; execution still persists/checks equity atomically.
+
+Validation covers missing brief, missing/mismatched review, non-actionable probability, actionable fixture path, and zero-capacity portfolio rejection with unchanged business hash. Full offline suite, Ruff, release guard and diff check run before PR; no fabricated market probability or order approval.

@@ -17,7 +17,10 @@ def observe_equity(
         return observe_equity_in_transaction(repo, portfolio, now)
 
 
-def observe_equity_in_transaction(repo, portfolio, now):
+def _equity_projection(repo, portfolio, now):
+    if now.tzinfo is None:
+        raise ValueError("Equity observation requires timezone")
+    now = now.astimezone(UTC)
     history = sorted(repo.list_equity_baselines(), key=lambda b: b.observed_at)
     if history and now < history[-1].observed_at:
         raise ValueError("Cannot backdate equity history; use a separate replay database")
@@ -36,19 +39,25 @@ def observe_equity_in_transaction(repo, portfolio, now):
     peak = max(
         previous.peak_equity if previous else portfolio.starting_cash, portfolio.portfolio_value
     )
-    repo.save_equity_baseline(
-        EquityBaseline(
-            baseline_id=day,
-            observed_at=now,
-            day_start_equity=start,
-            peak_equity=peak,
-            last_equity=portfolio.portfolio_value,
-            basis=basis,
-        )
+    baseline = EquityBaseline(
+        baseline_id=day, observed_at=now, day_start_equity=start,
+        peak_equity=peak, last_equity=portfolio.portfolio_value, basis=basis,
     )
-    return portfolio.model_copy(
+    projection = portfolio.model_copy(
         update={"as_of": now, "day_start_equity": start, "peak_equity": peak}
     )
+    return projection, baseline
+
+
+def project_equity(repo, portfolio, now):
+    """Evaluate prospective risk without writing a baseline on a rejected intent."""
+    return _equity_projection(repo, portfolio, now)[0]
+
+
+def observe_equity_in_transaction(repo, portfolio, now):
+    projection, baseline = _equity_projection(repo, portfolio, now)
+    repo.save_equity_baseline(baseline)
+    return projection
 
 
 def loss_metrics(portfolio: PortfolioSnapshot) -> dict[str, float]:
