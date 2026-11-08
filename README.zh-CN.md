@@ -6,7 +6,7 @@
 
 **Agent 入口：** 先读 [AGENTS.md](AGENTS.md)，再读 [Agent 指南](docs/agents/README.zh-CN.md)。
 
-Local Market Agent 将**公开市场快照 → 研究简报 → 风险检查 → 模拟交易 → 本地报告**串成可检查的工作流。项目基于 Python，优先支持离线使用，提供确定性示例数据和本地仪表板，便于检查证据、验证纸面交易流程。
+Local Market Agent 将**公开市场快照 → 研究简报 → 风险检查 → 明确审批 → 模拟交易 → 本地报告**串成可检查的工作流。项目基于 Python，优先支持离线使用，提供确定性示例数据和本地仪表板，便于检查证据、验证纸面交易流程。
 
 **仅限模拟交易。** 这是实验性研究工具。示例结果不能证明策略盈利能力或生产可用性。
 
@@ -27,7 +27,7 @@ python ui/server.py
 ## 三步使用
 
 1. **检查观察列表。** 对比市场快照、证据缺口和阻断原因。
-2. **审阅研究与风控。** 按用户指南运行 CLI 流程；LLM 只能生成研究内容。
+2. **审核并批准具体意图。** 按[审批流程](docs/users/PAPER_WORKFLOW.zh-CN.md)操作；LLM 只能生成研究内容。
 3. **查看审计记录。** 在本地只读仪表板中查看报告与模拟记录。
 
 ## 文件位置
@@ -51,8 +51,8 @@ docs/archive/            历史阶段计划与审查记录
 - [中文 Agent 指南](docs/agents/README.zh-CN.md) · [English Agent guide](docs/agents/README.md)
 - [文档索引](docs/README.md) · [安全与风控](docs/SAFETY_AND_RISK.md)
 - [变更记录](CHANGELOG.md) · [版本管理规则](docs/VERSIONING.zh-CN.md)
-- [0.2.0 发布说明](docs/releases/0.2.0.zh-CN.md) · [GitHub Releases](https://github.com/ThineLord/local-market-agent/releases)
+- [0.3.0 发布说明](docs/releases/0.3.0.zh-CN.md) · [GitHub Releases](https://github.com/ThineLord/local-market-agent/releases)
 
-当前应用版本为 **0.2.0**。后续发布统一使用一致的包版本、`vX.Y.Z` 标签、发布说明和经过审查的 PR。Codex 负责组织与管理，subagents 负责 review 和合并，不委派 bots。
+当前应用版本为 **0.3.0**。后续发布统一使用一致的包版本、`vX.Y.Z` 标签、发布说明和经过审查的 PR。Codex 负责组织与管理，subagents 负责 review 和合并，不委派 bots。
 
-默认保持 `REAL_MONEY_ENABLED=false`、`ALLOW_LIVE_ORDERS=false`、`HUMAN_APPROVAL_REQUIRED=true`。每笔模拟订单必须关联信号和已批准的风险决策。已知限制与本次未包含的工作见发布说明。
+默认保持 `REAL_MONEY_ENABLED=false`、`ALLOW_LIVE_ORDERS=false`、`HUMAN_APPROVAL_REQUIRED=true`。每笔模拟订单必须关联信号和已批准的风险决策。可运行[完整隔离演示](docs/users/README.zh-CN.md#新审批与证据流程)。升级方式和剩余限制见发布说明。

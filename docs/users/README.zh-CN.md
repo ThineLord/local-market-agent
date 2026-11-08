@@ -2,7 +2,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [项目首页](../../README.zh-CN.md)
 
-Local Market Agent 用于公开数据研究、风险检查和模拟交易。它优先支持离线示例；实盘交易、提款、杠杆、衍生品、做空、私有交易接口以及 LLM 直接下单均不在项目范围内。历史审查中仍有流程限制，详见[发布说明](../releases/0.2.0.zh-CN.md)。
+Local Market Agent 用于公开数据研究、风险检查和模拟交易。它优先支持离线示例；实盘交易、提款、杠杆、衍生品、做空、私有交易接口以及 LLM 直接下单均不在项目范围内。历史审查中仍有流程限制，详见[发布说明](../releases/0.3.0.zh-CN.md)。
 
 ## 安装
 
@@ -21,12 +21,8 @@ python -m pip install -e ".[dev]"
 以下操作会写入本地研究、风险和报告记录；符合规则时也可能写入模拟订单。保留安全默认值；信号被阻断时不会保证产生成交。
 
 ```bash
-export LMA_LLM_PROVIDER=mock
-lma ingest-demo
-lma generate-brief --fixture data/fixtures/demo_market.json
-lma risk-check
-lma paper-log
-lma report-daily
+python scripts/demo_workflow.py --output data/reports/workflow-demo
+LMA_DB_PATH=data/reports/workflow-demo/demo.sqlite python ui/server.py --port 8503
 ```
 
 示例使用确定性数据和 mock 模型，无需 API 密钥。数据库、研究简报和运行报告通常写入 `data/`，不要提交这些本地数据、导出文件或凭证。

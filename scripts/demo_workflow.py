@@ -43,7 +43,7 @@ def main():
     run("packet-review", "--packet", settled, "--output", settlement_review, "--scope", "settlement", "--actor", "synthetic-demo", "--reason", "Synthetic final outcome; no real market claim")
     run("packet-settle", "--packet", settled, "--review", settlement_review, database=True)
     run("paper-replay", "--intent-id", intent_id, database=True)
-    run("report-daily", database=True)
+    run("report-daily", "--export-dir", output / "reports", database=True)
     pending = demo_packet(output / "pending", market_id="synthetic-pending-demo")
     pending_review = pending.parent / "research-review.json"
     run("packet-review", "--packet", pending, "--output", pending_review, "--actor", "synthetic-demo", "--reason", "Synthetic pending-stage demonstration")

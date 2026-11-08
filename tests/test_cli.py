@@ -323,3 +323,18 @@ def test_failed_daily_and_invalid_dataset_are_nonzero_json(tmp_path):
         "data/fixtures/historical_validator/invalid_future_evidence.jsonl", "--output-dir", str(tmp_path / "validation")])
     assert invalid.exit_code == 2, invalid.output
     assert json.loads(invalid.output)["valid"] is False
+
+
+def test_report_explicit_export_directory_preserves_default_exports(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    default = tmp_path / "data/reports"
+    default.mkdir(parents=True)
+    for name in ["paper_orders.csv", "paper_orders.jsonl"]:
+        (default / name).write_text("existing user export")
+    exports = tmp_path / "isolated/reports"
+    result = CliRunner().invoke(app, ["report-daily", "--db", str(tmp_path / "demo.sqlite"), "--export-dir", str(exports)])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert Path(payload["csv"]).parent == exports and Path(payload["jsonl"]).parent == exports
+    assert Path(payload["csv"]).exists() and Path(payload["jsonl"]).exists()
+    assert all((default / n).read_text() == "existing user export" for n in ["paper_orders.csv", "paper_orders.jsonl"])
