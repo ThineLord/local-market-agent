@@ -4,7 +4,7 @@
 
 Local Market Agent is an offline-first research, risk-control, and paper-trading system for public market data. It provides deterministic local demos and an audit trail for experimental paper workflows.
 
-The default mode is read-only data plus paper trading only. Live order execution, withdrawals, leverage, derivatives, shorting, private trading APIs, and direct LLM-to-order flows are out of scope. Historical audits still record paper-workflow limitations; see the [release notes](../releases/0.3.0.md).
+The default mode is read-only data plus paper trading only. Live order execution, withdrawals, leverage, derivatives, shorting, private trading APIs, and direct LLM-to-order flows are out of scope. Historical audits still record paper-workflow limitations; see the [release notes](../releases/0.5.0.md).
 
 ## Setup
 

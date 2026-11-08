@@ -19,6 +19,8 @@ Start with the guide for your role and language. Historical plans and reports de
 
 ## Current technical references
 
+- [Hong Kong racing replay](HORSE_REPLAY.md) · [中文赛马回放](HORSE_REPLAY.zh-CN.md)
+
 - [Project specification](PROJECT_SPEC.md)
 - [Safety and risk](SAFETY_AND_RISK.md)
 - [Data sources](DATA_SOURCES.md)

@@ -55,3 +55,7 @@ Record actual results and limitations in `docs/IMPLEMENTATION_LOG.md` before ope
 The reviewing subagent examines the final diff, validation evidence, and CI for the exact head commit. Resolve findings before it marks the PR ready and merges with an expected-head guard. If branch policy requires an independent GitHub approval that the available account cannot supply, report that blocker; do not bypass policy. Never claim an advisory review is a GitHub approval.
 
 After merge, Codex verifies the merged commit, publishes the version tag and GitHub Release according to the [version policy](../VERSIONING.md), and checks the resulting links. Merge authority does not authorize unrelated PRs, data collection, or real trades.
+
+## Racing research boundary
+
+Read [the racing protocol](../HORSE_REPLAY.md) before importing horse records. Keep user tickets/snapshots in ignored local paths, preserve original source and import times, and never infer a historical recommendation from a result. The current module has no validated horse probability model and no order adapter: all research decisions are NO BET. An availability review is evidence-bound manual review, not proof supplied by a URL or self-filled timestamp.

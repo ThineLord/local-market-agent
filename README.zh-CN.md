@@ -30,6 +30,8 @@ python ui/server.py
 2. **审核并批准具体意图。** 按[审批流程](docs/users/PAPER_WORKFLOW.zh-CN.md)操作；LLM 只能生成研究内容。
 3. **查看审计记录。** 在本地只读仪表板中查看报告与模拟记录。
 
+独立的[香港赛马工作区](docs/HORSE_REPLAY.zh-CN.md)支持历史记录回放及原始赛前快照核验。缺失证据保留 UNKNOWN，当前赛马研究输出 NO BET。
+
 ## 文件位置
 
 ```text
@@ -51,8 +53,8 @@ docs/archive/            历史阶段计划与审查记录
 - [中文 Agent 指南](docs/agents/README.zh-CN.md) · [English Agent guide](docs/agents/README.md)
 - [文档索引](docs/README.md) · [安全与风控](docs/SAFETY_AND_RISK.md)
 - [变更记录](CHANGELOG.md) · [版本管理规则](docs/VERSIONING.zh-CN.md)
-- [0.4.0 发布说明](docs/releases/0.4.0.zh-CN.md) · [GitHub Releases](https://github.com/ThineLord/local-market-agent/releases)
+- [0.5.0 发布说明](docs/releases/0.5.0.zh-CN.md) · [GitHub Releases](https://github.com/ThineLord/local-market-agent/releases)
 
-当前应用版本为 **0.4.0**。后续发布统一使用一致的包版本、`vX.Y.Z` 标签、发布说明和经过审查的 PR。Codex 负责组织与管理，subagents 负责 review 和合并，不委派 bots。
+当前应用版本为 **0.5.0**。后续发布统一使用一致的包版本、`vX.Y.Z` 标签、发布说明和经过审查的 PR。Codex 负责组织与管理，subagents 负责 review 和合并，不委派 bots。
 
 默认保持 `REAL_MONEY_ENABLED=false`、`ALLOW_LIVE_ORDERS=false`、`HUMAN_APPROVAL_REQUIRED=true`。每笔模拟订单必须关联信号和已批准的风险决策。可运行[完整隔离演示](docs/users/README.zh-CN.md#新审批与证据流程)。升级方式和剩余限制见发布说明。
