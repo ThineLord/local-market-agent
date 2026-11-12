@@ -16,6 +16,8 @@ def curve_metrics(initial, rows, key):
     max_fraction = Decimal(0)
     for row in rows:
         if row[key] is None or row["participation"] == "UNKNOWN":
+            # Meeting totals stay unknown. Keep balances already settled;
+            # do not drop that prefix or append a zero for the missing race.
             return {
                 "status": "UNKNOWN",
                 "balance": None,
@@ -24,6 +26,7 @@ def curve_metrics(initial, rows, key):
                 "roi": None,
                 "bankroll_return": None,
                 "curve": points,
+                "stopped_at_race": row["race_no"],
                 "max_drawdown": None,
                 "max_drawdown_fraction": None,
             }
@@ -44,6 +47,7 @@ def curve_metrics(initial, rows, key):
         "curve": points,
         "max_drawdown": amount(max_loss),
         "max_drawdown_fraction": float(max_fraction),
+        "stopped_at_race": None,
         "drawdown_basis": "race-close entitlement balance; not intrarace or redeemed cash",
     }
 
@@ -156,7 +160,8 @@ def replay_history(record: HistoricalRecord, official: OfficialMeeting | None = 
     total_known = sum(p["known_outcomes"] for p in pools.values())
     wins = sum(p["wins"] for p in pools.values())
     for pool in pools.values():
-        pool["hit_rate"] = pool["wins"] / pool["known_outcomes"] if pool["known_outcomes"] else None
+        pool_complete = pool["tickets"] > 0 and pool["known_outcomes"] == pool["tickets"]
+        pool["hit_rate"] = pool["wins"] / pool["tickets"] if pool_complete else None
         pool["official_gross_return"] = (
             amount(pool["official_gross_return"])
             if pool["known_outcomes"] == pool["tickets"]

@@ -175,12 +175,29 @@ def test_complete_official_replay_keeps_cash_and_prediction_unknown(tmp_path):
 def test_missing_or_unsupported_results_do_not_invent_losses(tmp_path):
     record = historical_record()
     report = replay_history(record)
-    assert report["official_entitlement"]["balance"] is None and report["wins"] is None
+    entitlement = report["official_entitlement"]
+    assert entitlement["balance"] is None and report["wins"] is None
+    assert entitlement["stopped_at_race"] == 2
+    assert [point["race_no"] for point in entitlement["curve"]] == [0, 1]
+    assert entitlement["curve"][1]["balance"] == 200
+    assert report["races"][1]["official_gross_return"] is None
+    assert report["pools"]["WIN"]["hit_rate"] is None
     assert report["races"][2]["tickets"][0]["official_outcome"] == "UNKNOWN"
     source_directory(tmp_path / "sources")
     official = load_results(tmp_path / "sources", now=NOW)
     official.races[1].supported = False
-    assert replay_history(record, official)["official_entitlement"]["balance"] is None
+    partial = replay_history(record, official)
+    assert partial["official_entitlement"]["balance"] is None
+    assert partial["official_entitlement"]["stopped_at_race"] == 2
+    assert [point["race_no"] for point in partial["official_entitlement"]["curve"]] == [0, 1]
+    assert partial["races"][2]["tickets"][0]["official_outcome"] == "lost"
+    assert partial["races"][2]["official_gross_return"] == 0
+    assert partial["races"][1]["official_gross_return"] is None
+    assert partial["pools"]["PLACE"]["wins"] == 1
+    assert partial["pools"]["PLACE"]["known_outcomes"] == 1
+    assert partial["pools"]["PLACE"]["tickets"] == 2
+    assert partial["pools"]["PLACE"]["hit_rate"] is None
+    assert partial["pools"]["WIN"]["hit_rate"] is None
     official.meeting_date = date(2026, 1, 3)
     with pytest.raises(ValueError, match="does not match"):
         replay_history(record, official)
@@ -382,6 +399,16 @@ def test_truncated_place_pool_cannot_turn_winner_into_loss(tmp_path):
     record.races[1].tickets[1].horse_no = 3
     report = replay_history(record, official)
     assert report["races"][1]["tickets"][1]["official_outcome"] == "UNKNOWN"
+
+
+def test_same_horse_number_and_brand_may_repeat_across_races():
+    """马号 and declaration Brand No. (stored as horse_id) are not one global id."""
+    parsed = parse_starters(starters_html(2), DAY, "ST", 2)
+    assert parsed["1"]["runners"][0]["horse_no"] == parsed["2"]["runners"][0]["horse_no"] == 1
+    assert parsed["1"]["runners"][0]["horse_id"] == parsed["2"]["runners"][0]["horse_id"] == "(S001)"
+    record = historical_record()
+    record.races[2].tickets[0].horse_no = 1
+    assert record.races[1].tickets[0].horse_no == record.races[2].tickets[0].horse_no == 1
 
 
 def test_result_receipt_cannot_precede_race_start_on_same_day(tmp_path):
