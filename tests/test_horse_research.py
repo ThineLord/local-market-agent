@@ -124,6 +124,28 @@ def save_packet(directory, packet, *, reviewed=True):
         (directory / "availability-review.json").write_text(json.dumps(review))
 
 
+def test_same_horse_id_at_t10_and_t3_is_one_runner(tmp_path):
+    directory = tmp_path / "research"
+    write_packet(directory)
+    report = load_research(directory, now=NOW)
+    race = report["races"][0]
+    t10 = race["checkpoints"]["T10"]
+    t3 = race["checkpoints"]["T3"]
+    assert [row["horse_id"] for row in t10] == [row["horse_id"] for row in t3]
+    assert t10[0]["horse_no"] == t3[0]["horse_no"] == 1
+    assert race["decision"] == "NO_BET" and report["orders_created"] == 0
+
+
+def test_claimed_availability_after_capture_is_not_rejected(tmp_path):
+    directory = tmp_path / "research"
+    packet = write_packet(directory)
+    packet["sources"][0]["claimed_available_at"] = "2026-01-01T09:49:40Z"
+    save_packet(directory, packet)
+    report = load_research(directory, now=NOW)
+    assert report["races"][0]["decision"] == "NO_BET"
+    assert report["orders_created"] == 0
+
+
 def test_full_field_two_checkpoint_audit_still_no_bet(tmp_path):
     directory = tmp_path / "research"
     write_packet(directory)

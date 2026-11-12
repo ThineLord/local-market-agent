@@ -4,7 +4,8 @@ Application releases use `vMAJOR.MINOR.PATCH`. See [version management](maintain
 
 ## Unreleased
 
-No changes yet.
+- Keep an incomplete Hong Kong racing meeting unknown as a summary: pool hit rates are omitted until every ticket in that pool is settled, while settled outcomes and win counts remain.
+- An entitlement curve with a later unknown race keeps the settled prefix, records `stopped_at_race`, and does not fill the gap with zero or draw that prefix as a finished meeting. Research decisions remain NO_BET.
 
 ## 0.5.1 — 2026-11-09
 
