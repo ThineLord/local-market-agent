@@ -52,6 +52,15 @@ def curve_metrics(initial, rows, key):
     }
 
 
+def _official_ticket_known(ticket, result) -> bool:
+    """A supported race can settle one whole-unit ticket without settling its siblings."""
+    if result is None or not result.supported:
+        return False
+    return ticket.horse_no in {runner.horse_no for runner in result.runners} and (
+        ticket.stake % result.unit_bet == 0
+    )
+
+
 def replay_history(record: HistoricalRecord, official: OfficialMeeting | None = None):
     if official and (
         official.meeting_date != record.meeting_date or official.course != record.course
@@ -78,15 +87,12 @@ def replay_history(record: HistoricalRecord, official: OfficialMeeting | None = 
         result = results.get(race.race_no)
         stake = sum((t.stake for t in race.tickets), Decimal(0))
         settled = result is not None and result.supported
-        known = settled and all(
-            t.horse_no in {r.horse_no for r in result.runners} and t.stake % result.unit_bet == 0
-            for t in race.tickets
-        )
+        known_tickets = [_official_ticket_known(ticket, result) for ticket in race.tickets]
         gross = Decimal(0) if race.participation == "NOT_PLACED" else None
-        if race.participation == "REPORTED_TICKETS" and known:
+        if race.participation == "REPORTED_TICKETS" and known_tickets and all(known_tickets):
             gross = Decimal(0)
         row_tickets = []
-        for ticket in race.tickets:
+        for ticket, known in zip(race.tickets, known_tickets, strict=True):
             payout = None
             outcome = "UNKNOWN"
             if known:
@@ -97,7 +103,8 @@ def replay_history(record: HistoricalRecord, official: OfficialMeeting | None = 
                     if rate is not None
                     else Decimal(0)
                 )
-                gross += payout
+                if gross is not None:
+                    gross += payout
             pool = pools[ticket.pool]
             pool["tickets"] += 1
             pool["stake"] += ticket.stake

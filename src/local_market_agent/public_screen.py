@@ -60,9 +60,13 @@ def screen_public_markets(output, *, series="KXNBAGAME", max_pages=2, allow_netw
                 rows.append({"market_id": ticker, "observed_at": observed.isoformat(),
                     "market_checks_passed": False, "probability_ready": False,
                     "blockers": ["Invalid public market: " + str(exc)], "source_path": path.name})
-        cursor = response.get("cursor") or ""
-        if not isinstance(cursor, str):
+        raw_cursor = response.get("cursor")
+        if raw_cursor is None:
+            cursor = ""
+        elif not isinstance(raw_cursor, str):
             raise ValueError("Invalid public pagination cursor")
+        else:
+            cursor = raw_cursor
         if not cursor:
             break
         if cursor in seen_cursors:

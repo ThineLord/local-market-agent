@@ -163,6 +163,61 @@ def test_no_market_marks_invert_yes_probability_but_not_cost_fallback(repo, brie
     )
 
 
+def test_zero_yes_ask_is_not_replaced_by_last_price(repo, brief, snapshot):
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    from local_market_agent.config import Settings
+    from local_market_agent.operations.phase7_daily import _intent_from_signal, _marks_from_snapshot
+    from local_market_agent.paper.execution import PaperExecutionService
+    from local_market_agent.paper.ledger import _paper_side_and_limit
+
+    now = datetime(2026, 6, 5, 0, 2, tzinfo=UTC)
+    zero_ask = snapshot.model_copy(
+        update={
+            "best_bid": 0.0,
+            "best_ask": 0.0,
+            "last_price": 0.42,
+            "market_implied_probability": 0.0,
+            "market": snapshot.market.model_copy(update={"close_time": now + timedelta(days=1)}),
+        }
+    )
+    yes = SimpleNamespace(action=SignalAction.PAPER_BUY_YES)
+    side, price = _paper_side_and_limit(yes, zero_ask)
+    assert side == OrderSide.BUY_YES
+    assert price == 0.0
+    missing_ask = zero_ask.model_copy(
+        update={"best_ask": None, "last_price": 0.0, "market_implied_probability": 0.2}
+    )
+    assert _paper_side_and_limit(yes, missing_ask)[1] == 0.0
+    positive = zero_ask.model_copy(update={"best_bid": 0.4, "best_ask": 0.45, "last_price": 0.1})
+    assert _paper_side_and_limit(yes, positive)[1] == 0.45
+    assert _paper_side_and_limit(SimpleNamespace(action=SignalAction.PAPER_BUY_NO), zero_ask)[1] == 1.0
+    zero_last = zero_ask.model_copy(update={"last_price": 0.0, "market_implied_probability": 0.41})
+    assert _marks_from_snapshot(zero_last) == {zero_last.market.market_id: 0.0}
+
+    priced = brief.model_copy(
+        update={
+            "snapshot_id": zero_ask.snapshot_id,
+            "created_at": now,
+            "estimated_probability": 0.8,
+            "market_implied_probability": 0.0,
+            "recommended_action": RecommendedAction.PAPER_BUY_YES,
+        }
+    )
+    signal = PredictionMarketEdgeStrategy().generate_signal(priced, zero_ask)
+    assert signal.action == SignalAction.PAPER_BUY_YES
+    decision = RiskEngine().evaluate_signal(signal)
+    assert decision.is_approved
+    with pytest.raises(ValueError, match="Positive executable quote required"):
+        PaperExecutionService(repo, Settings(db_path=repo.db_path)).prepare(
+            signal, decision, zero_ask, priced, now=now, simulation=True
+        )
+    assert _intent_from_signal(signal, zero_ask, decision, Settings()) is None
+    kept = _intent_from_signal(signal, positive, decision, Settings())
+    assert kept is not None and kept.limit_price == 0.45
+
+
 def test_public_style_no_execution_equity_and_report_use_outcome_value(repo, brief, snapshot):
     from datetime import timedelta
 

@@ -6,6 +6,12 @@ Application releases use `vMAJOR.MINOR.PATCH`. See [version management](maintain
 
 - Keep an incomplete Hong Kong racing meeting unknown as a summary: pool hit rates are omitted until every ticket in that pool is settled, while settled outcomes and win counts remain.
 - An entitlement curve with a later unknown race keeps the settled prefix, records `stopped_at_race`, and does not fill the gap with zero or draw that prefix as a finished meeting. Research decisions remain NO_BET.
+- Settle Hong Kong racing tickets individually. A non-unit WIN stake stays UNKNOWN and keeps the race return and meeting curve unknown, but does not void a sibling whole-unit PLACE win. An unsupported official race still leaves every ticket in that race UNKNOWN.
+- Reject a missing Polymarket id instead of storing the string `None`, treat the boolean strings `true` and `false` as flags, and keep commas that belong inside a quoted outcome label.
+- Encode Polymarket search text, so an `S&P` query is not split on `&`.
+- Reject Kalshi boolean prices. Legacy integer cents, including `1` as `0.01`, are unchanged. Boolean strings already failed conversion.
+- Reject a non-string public-screen pagination cursor even when it is falsy. A missing cursor still ends the scan, and the string cursor `"0"` still continues.
+- Keep a zero YES ask or a zero last price. Do not replace it with a later positive price. Ordinary paper opens still require a positive quote and per-intent approval.
 
 ## 0.5.1 — 2026-11-09
 

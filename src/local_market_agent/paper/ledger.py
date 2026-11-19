@@ -335,13 +335,24 @@ class PaperLedger:
         return output
 
 
+def _first_present_price(*values: float | None) -> float | None:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
 def _paper_side_and_limit(
     signal: Signal, snapshot: MarketSnapshot
 ) -> tuple[OrderSide, float | None]:
     if signal.action == SignalAction.PAPER_BUY_YES:
         return (
             OrderSide.BUY_YES,
-            snapshot.best_ask or snapshot.last_price or snapshot.market_implied_probability,
+            _first_present_price(
+                snapshot.best_ask,
+                snapshot.last_price,
+                snapshot.market_implied_probability,
+            ),
         )
     no_price = None
     if snapshot.best_bid is not None:

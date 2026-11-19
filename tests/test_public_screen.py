@@ -61,6 +61,50 @@ def test_public_screen_rejects_ambiguous_response(tmp_path, monkeypatch, mutatio
         screen_public_markets(tmp_path / "scan", allow_network=True)
 
 
+@pytest.mark.parametrize("cursor", [0, False, 0.0, []])
+def test_public_screen_rejects_falsy_non_string_cursor(tmp_path, monkeypatch, cursor):
+    monkeypatch.setattr(
+        "local_market_agent.public_screen.safe_get_json",
+        lambda _: {"markets": [market()], "cursor": cursor},
+    )
+    monkeypatch.setattr("local_market_agent.public_screen.utc_now", lambda: NOW)
+    with pytest.raises(ValueError, match="Invalid public pagination cursor"):
+        screen_public_markets(tmp_path / "scan", max_pages=2, allow_network=True)
+
+
+@pytest.mark.parametrize("cursor", [None, ""])
+def test_public_screen_stops_on_missing_string_cursor(tmp_path, monkeypatch, cursor):
+    calls = []
+
+    def get(url):
+        calls.append(url)
+        return {"markets": [market()], "cursor": cursor}
+
+    monkeypatch.setattr("local_market_agent.public_screen.safe_get_json", get)
+    monkeypatch.setattr("local_market_agent.public_screen.utc_now", lambda: NOW)
+    report = screen_public_markets(tmp_path / "scan", max_pages=2, allow_network=True)
+    assert len(calls) == 1
+    assert report["truncated"] is False
+    assert report["market_count"] == 1
+
+
+def test_public_screen_keeps_string_cursor_zero(tmp_path, monkeypatch):
+    calls = []
+
+    def get(url):
+        calls.append(url)
+        if len(calls) == 1:
+            return {"markets": [market()], "cursor": "0"}
+        return {"markets": [market("KXNBAGAME-B")], "cursor": ""}
+
+    monkeypatch.setattr("local_market_agent.public_screen.safe_get_json", get)
+    monkeypatch.setattr("local_market_agent.public_screen.utc_now", lambda: NOW)
+    report = screen_public_markets(tmp_path / "scan", max_pages=2, allow_network=True)
+    assert len(calls) == 2 and "cursor=0" in calls[1]
+    assert report["market_count"] == 2
+    assert report["truncated"] is False
+
+
 def test_legacy_aggregate_liquidity_cannot_pass_depth_discovery(tmp_path, monkeypatch):
     row = market()
     del row["yes_bid_size_fp"]

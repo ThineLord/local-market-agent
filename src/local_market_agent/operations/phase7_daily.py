@@ -16,6 +16,7 @@ from local_market_agent.operations.phase7_market_data import (
 )
 from local_market_agent.paper import PaperLedger
 from local_market_agent.paper.execution import PaperExecutionService
+from local_market_agent.paper.ledger import _first_present_price, _paper_side_and_limit
 from local_market_agent.reporting import Phase7DailyReportGenerator
 from local_market_agent.risk import RiskEngine, RiskGateEvaluator
 from local_market_agent.risk.equity import loss_metrics, observe_equity
@@ -425,12 +426,15 @@ class Phase7DailyRunner:
         now: datetime,
     ) -> RiskGateDecision:
         if intent is None:
+            observed_price = _first_present_price(
+                snapshot.last_price, snapshot.market_implied_probability
+            )
             intent = PaperOrderIntent(
                 signal_id=signal.signal_id,
                 market_id=signal.market_id,
                 side=OrderSide.BUY,
                 quantity=1,
-                limit_price=snapshot.last_price or snapshot.market_implied_probability or 0.5,
+                limit_price=0.5 if observed_price is None else observed_price,
                 notional=1,
                 metadata={"placeholder": "non-actionable signal had no paper order intent"},
             )
@@ -459,7 +463,7 @@ def _intent_from_signal(
         return None
 
     side, limit_price = _paper_side_and_limit(signal, snapshot)
-    if limit_price is None:
+    if limit_price is None or limit_price <= 0:
         return None
     notional = min(
         settings.risk.paper_starting_cash * risk_decision.max_position_pct,
@@ -476,25 +480,8 @@ def _intent_from_signal(
     )
 
 
-def _paper_side_and_limit(
-    signal: Signal,
-    snapshot: MarketSnapshot,
-) -> tuple[OrderSide, float | None]:
-    if signal.action == SignalAction.PAPER_BUY_YES:
-        return (
-            OrderSide.BUY_YES,
-            snapshot.best_ask or snapshot.last_price or snapshot.market_implied_probability,
-        )
-    no_price = None
-    if snapshot.best_bid is not None:
-        no_price = 1 - snapshot.best_bid
-    elif snapshot.market_implied_probability is not None:
-        no_price = 1 - snapshot.market_implied_probability
-    return (OrderSide.BUY_NO, no_price)
-
-
 def _marks_from_snapshot(snapshot: MarketSnapshot) -> dict[str, float]:
-    mark = snapshot.last_price or snapshot.market_implied_probability
+    mark = _first_present_price(snapshot.last_price, snapshot.market_implied_probability)
     if mark is None:
         return {}
     return {snapshot.market.market_id: mark}
