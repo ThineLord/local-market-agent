@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from local_market_agent.adapters.base import cache_json, safe_get_json
 from local_market_agent.schemas import Market, MarketSnapshot
@@ -28,7 +29,7 @@ class PolymarketAdapter:
         return self._normalize(payload)
 
     def search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
-        url = f"{self.BASE_URL}/markets?search={query}&limit={limit}"
+        url = f"{self.BASE_URL}/markets?{urlencode({'search': query, 'limit': limit})}"
         payload = safe_get_json(url)
         cache_json(self.raw_cache_dir, url, payload)
         if isinstance(payload, list):
@@ -58,18 +59,21 @@ class PolymarketAdapter:
         return payload
 
     def _normalize(self, payload: dict[str, Any]) -> MarketSnapshot:
-        market_id = str(payload.get("id") or payload.get("conditionId") or payload.get("slug"))
+        market_id = _market_id(payload)
         title = str(payload.get("question") or payload.get("title") or market_id)
-        active = bool(payload.get("active", False))
-        closed = bool(payload.get("closed", False))
+        active = _payload_flag(payload.get("active"), False)
+        closed = _payload_flag(payload.get("closed"), False)
         status = MarketStatus.OPEN if active and not closed else MarketStatus.CLOSED
+        slug = payload.get("slug", market_id)
+        if slug is None:
+            slug = market_id
         market = Market(
             market_id=market_id,
             title=title,
             platform="polymarket",
             market_type=MarketType.PREDICTION,
             status=status,
-            url=f"https://polymarket.com/event/{payload.get('slug', market_id)}",
+            url=f"https://polymarket.com/event/{slug}",
             outcomes=_as_list(payload.get("outcomes")),
         )
         best_bid = _first_probability(payload, ["bestBid", "best_bid"])
@@ -89,16 +93,52 @@ class PolymarketAdapter:
         )
 
 
+def _market_id(payload: dict[str, Any]) -> str:
+    raw = payload.get("id") or payload.get("conditionId") or payload.get("slug")
+    if raw is None:
+        raise ValueError("Polymarket market response is missing its id")
+    return str(raw)
+
+
+def _payload_flag(value: object, default: bool) -> bool:
+    """Parse JSON booleans and the strings true/false. Other values keep bool()."""
+    if isinstance(value, str):
+        token = value.strip().lower()
+        if token == "true":
+            return True
+        if token == "false":
+            return False
+    if value is None:
+        return default
+    return bool(value)
+
+
 def _as_list(value: object) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value]
     if isinstance(value, str):
-        return [part.strip() for part in value.strip("[]").replace('"', "").split(",") if part]
+        text = value.strip()
+        if text.startswith("["):
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, list):
+                return [_json_outcome(item) for item in parsed]
+        return [part.strip() for part in text.strip("[]").replace('"', "").split(",") if part]
     return []
 
 
+def _json_outcome(item: object) -> str:
+    if isinstance(item, bool):
+        return "true" if item else "false"
+    if item is None:
+        return "null"
+    return str(item)
+
+
 def _float_or_none(value: object) -> float | None:
-    if value is None or value == "":
+    if value is None or value == "" or isinstance(value, bool):
         return None
     try:
         parsed = float(value)

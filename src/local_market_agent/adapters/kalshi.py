@@ -86,6 +86,8 @@ def _price(payload: dict[str, Any], key: str) -> float | None:
     value = payload[dollar_key] if dollar_key in payload else payload.get(key)
     if value is None or value == "":
         return None
+    if isinstance(value, bool):
+        raise ValueError(f"Invalid Kalshi {key} probability")
     parsed = float(value) / (1 if dollar_key in payload else 100)
     if not 0 <= parsed <= 1:
         raise ValueError(f"Invalid Kalshi {key} probability")

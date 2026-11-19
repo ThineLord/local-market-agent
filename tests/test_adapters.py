@@ -38,10 +38,17 @@ def test_kalshi_dollar_fields_and_one_cent_are_not_confused(tmp_path):
     assert current.market.close_time is not None
 
 
-@pytest.mark.parametrize("price", ["NaN", "Infinity", "-0.1", "1.1", "broken"])
+@pytest.mark.parametrize("price", ["NaN", "Infinity", "-0.1", "1.1", "broken", True, False, "true", "false"])
 def test_kalshi_invalid_price_is_not_clipped(price):
     with pytest.raises(ValueError):
         KalshiAdapter().normalize_market({"ticker": "BAD", "yes_bid_dollars": price})
+
+
+def test_kalshi_boolean_cent_price_is_not_one_cent():
+    with pytest.raises(ValueError, match="probability"):
+        KalshiAdapter().normalize_market({"ticker": "BAD", "yes_bid": True})
+    legacy = KalshiAdapter().normalize_market({"ticker": "CENT", "yes_bid": 1, "yes_ask": 2})
+    assert (legacy.best_bid, legacy.best_ask) == (0.01, 0.02)
 
 
 def test_polymarket_zero_midpoint_and_bad_probability():
@@ -50,6 +57,68 @@ def test_polymarket_zero_midpoint_and_bad_probability():
     assert snapshot.market_implied_probability == 0
     with pytest.raises(ValueError):
         adapter._normalize({"id": "bad", "bestBid": 2})
+    boolean_quote = adapter._normalize({"id": "flag", "bestBid": True, "lastTradePrice": 0.3})
+    assert boolean_quote.best_bid is None
+    assert boolean_quote.market_implied_probability == 0.3
+
+
+def test_polymarket_missing_id_is_not_the_string_none():
+    adapter = PolymarketAdapter()
+    for payload in ({}, {"id": None, "conditionId": None, "slug": None}, {"id": "", "slug": None}):
+        with pytest.raises(ValueError, match="missing its id"):
+            adapter._normalize(payload)
+    numeric = adapter._normalize({"id": 12345, "slug": "kept", "question": "Q"})
+    assert numeric.market.market_id == "12345"
+    assert numeric.market.url == "https://polymarket.com/event/kept"
+    condition = adapter._normalize({"conditionId": "0xabc", "slug": None, "question": "Q"})
+    assert condition.market.market_id == "0xabc"
+    assert condition.market.url == "https://polymarket.com/event/0xabc"
+    literal = adapter._normalize({"id": "m2", "slug": "literal-None"})
+    assert literal.market.url == "https://polymarket.com/event/literal-None"
+
+
+def test_polymarket_boolean_strings_and_comma_outcomes():
+    adapter = PolymarketAdapter()
+    inactive = adapter._normalize({"id": "a", "active": "false"})
+    assert inactive.market.status == "closed"
+    opened = adapter._normalize({"id": "b", "active": "true", "closed": "false"})
+    assert opened.market.status == "open"
+    still_open = adapter._normalize({"id": "d", "active": True, "closed": False})
+    assert still_open.market.status == "open"
+    still_closed = adapter._normalize({"id": "e", "active": False, "closed": True})
+    assert still_closed.market.status == "closed"
+    quoted = adapter._normalize({
+        "id": "labels",
+        "outcomes": '["Alpha, Beta", "Gamma"]',
+    })
+    assert quoted.market.outcomes == ["Alpha, Beta", "Gamma"]
+    both = adapter._normalize({
+        "id": "both",
+        "outcomes": '["S&P 500 above 5,000", "S&P 500 below 5,000"]',
+    })
+    assert both.market.outcomes == ["S&P 500 above 5,000", "S&P 500 below 5,000"]
+    plain = adapter._normalize({"id": "plain", "outcomes": "Yes,No"})
+    assert plain.market.outcomes == ["Yes", "No"]
+    tokens = adapter._normalize({"id": "tokens", "outcomes": "[true, false]"})
+    assert tokens.market.outcomes == ["true", "false"]
+    listed = adapter._normalize({"id": "listed", "outcomes": ["Yes", "No"]})
+    assert listed.market.outcomes == ["Yes", "No"]
+
+
+def test_polymarket_search_encodes_ampersand(monkeypatch):
+    calls: list[str] = []
+
+    def fake_get_json(url: str, *, headers=None):
+        calls.append(url)
+        return []
+
+    monkeypatch.setattr("local_market_agent.adapters.polymarket.safe_get_json", fake_get_json)
+    PolymarketAdapter().search("S&P")
+    PolymarketAdapter().search("election")
+    assert calls == [
+        "https://gamma-api.polymarket.com/markets?search=S%26P&limit=10",
+        "https://gamma-api.polymarket.com/markets?search=election&limit=10",
+    ]
 
 
 def test_kalshi_fetch_snapshot_is_read_only(monkeypatch, tmp_path):

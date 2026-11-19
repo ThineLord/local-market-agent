@@ -172,6 +172,59 @@ def test_complete_official_replay_keeps_cash_and_prediction_unknown(tmp_path):
     )
 
 
+def test_non_unit_win_stake_does_not_void_the_place_ticket(tmp_path):
+    """Race 2 WIN stake 15 is not a whole HK$10 unit; the PLACE stake stays 10."""
+    source_directory(tmp_path / "sources")
+    official = load_results(tmp_path / "sources", now=NOW)
+    record = historical_record()
+    record.races[1].tickets[0].stake = Decimal("15")
+    report = replay_history(record, official)
+    race2 = report["races"][1]
+    assert race2["tickets"][0]["pool"] == "WIN"
+    assert race2["tickets"][0]["official_outcome"] == "UNKNOWN"
+    assert race2["tickets"][0]["official_entitlement"] is None
+    assert race2["tickets"][1]["pool"] == "PLACE"
+    assert race2["tickets"][1]["official_outcome"] == "won"
+    assert race2["tickets"][1]["official_entitlement"] == 15
+    assert race2["official_gross_return"] is None
+    entitlement = report["official_entitlement"]
+    assert entitlement["status"] == "UNKNOWN"
+    assert entitlement["balance"] is None
+    assert entitlement["gross_return"] is None
+    assert entitlement["net_profit"] is None
+    assert entitlement["stopped_at_race"] == 2
+    assert [point["race_no"] for point in entitlement["curve"]] == [0, 1]
+    assert report["wins"] is None and report["hit_rate"] is None
+    assert report["pools"]["PLACE"] == {
+        **report["pools"]["PLACE"],
+        "wins": 2,
+        "known_outcomes": 2,
+        "tickets": 2,
+        "hit_rate": 1,
+        "official_gross_return": 30,
+    }
+    assert report["pools"]["WIN"]["wins"] == 0
+    assert report["pools"]["WIN"]["known_outcomes"] == 1
+    assert report["pools"]["WIN"]["tickets"] == 2
+    assert report["pools"]["WIN"]["hit_rate"] is None
+    assert report["pools"]["WIN"]["official_gross_return"] is None
+    assert report["races"][2]["tickets"][0]["official_outcome"] == "lost"
+    assert report["races"][3]["tickets"][0]["official_outcome"] == "won"
+    official.races[1].supported = False
+    blocked = replay_history(record, official)
+    assert [ticket["official_outcome"] for ticket in blocked["races"][1]["tickets"]] == [
+        "UNKNOWN",
+        "UNKNOWN",
+    ]
+    whole_units = historical_record()
+    whole_units.races[1].tickets[0].stake = Decimal("20")
+    doubled = replay_history(whole_units, load_results(tmp_path / "sources", now=NOW))
+    assert doubled["races"][1]["tickets"][0]["official_outcome"] == "won"
+    assert doubled["races"][1]["tickets"][0]["official_entitlement"] == 40
+    assert doubled["races"][1]["tickets"][1]["official_outcome"] == "won"
+    assert doubled["official_entitlement"]["status"] == "complete_arithmetic_only"
+
+
 def test_missing_or_unsupported_results_do_not_invent_losses(tmp_path):
     record = historical_record()
     report = replay_history(record)
