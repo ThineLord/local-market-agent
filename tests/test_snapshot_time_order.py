@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import sqlite3
+import threading
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from local_market_agent.schemas import (
     RiskGateDecisionStatus,
 )
 from local_market_agent.schemas.models import OrderSide
+from local_market_agent.storage import SQLiteRepository
 from local_market_agent.strategy import PredictionMarketEdgeStrategy
 from ui.server import DashboardRepository
 
@@ -292,37 +294,23 @@ def test_public_export_same_instant_follows_ascending_rowid(repo, tmp_path: Path
     assert repo.db_path.read_bytes() == before
 
 
-def test_uniform_utc_offset_uses_stored_text_order(repo):
+def test_uniform_utc_offset_matches_stored_text_order(repo):
     _insert(repo, "early", "2026-06-05T01:00:00+00:00")
     _insert(repo, "micro", "2026-06-05T02:00:00.000100+00:00")
     _insert(repo, "later", "2026-06-05T02:00:00.000100+00:00")
     _insert(repo, "whole", "2026-06-05T02:00:00+00:00")
-    with repo._connection() as conn:
-        assert repo._timestamp_order_key(conn, "market_snapshots", "", []) == "created_at"
-        filtered = repo._timestamp_order_key(
-            conn, "market_snapshots", "WHERE market_id = ?", ["demo-candidate"]
-        )
-        assert filtered == "created_at"
     assert _ids(repo) == ["later", "micro", "whole", "early"]
     assert _ids(repo, limit=1) == ["later"]
     exported = [item["snapshot_id"] for item in repo.export_payloads("market_snapshots")]
     assert exported == ["early", "whole", "micro", "later"]
 
     _insert(repo, "offset", "2026-06-05T09:00:00+08:00", "other-market")
-    with repo._connection() as conn:
-        assert repo._timestamp_order_key(conn, "market_snapshots", "", []) != "created_at"
-        filtered = repo._timestamp_order_key(
-            conn, "market_snapshots", "WHERE market_id = ?", ["demo-candidate"]
-        )
-        assert filtered == "created_at"
     assert _ids(repo, "demo-candidate", 1) == ["later"]
 
 
 def test_zero_fraction_utc_tie_stays_on_absolute_rowid(repo):
     _insert(repo, "padded", "2026-06-05T02:00:00.000000+00:00")
     _insert(repo, "plain", "2026-06-05T02:00:00+00:00")
-    with repo._connection() as conn:
-        assert repo._timestamp_order_key(conn, "market_snapshots", "", []) != "created_at"
     assert _ids(repo, limit=1) == ["plain"]
     exported = [item["snapshot_id"] for item in repo.export_payloads("market_snapshots")]
     assert exported == ["padded", "plain"]
@@ -331,6 +319,165 @@ def test_zero_fraction_utc_tie_stays_on_absolute_rowid(repo):
         "padded": "2026-06-05T02:00:00.000000+00:00",
         "plain": "2026-06-05T02:00:00+00:00",
     }
+
+
+def _enable_wal(repo) -> None:
+    with sqlite3.connect(repo.db_path) as conn:
+        mode = conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+    assert mode == "wal"
+
+
+def _save_utc_snapshot(repo) -> None:
+    repo.save_market_snapshot(MarketSnapshot.model_validate(_payload("B", "2026-06-05T02:00:00Z")))
+    with sqlite3.connect(repo.db_path) as conn:
+        created_at, payload = conn.execute(
+            "SELECT created_at, payload FROM market_snapshots WHERE snapshot_id = 'B'"
+        ).fetchone()
+    assert created_at == "2026-06-05T02:00:00+00:00"
+    assert json.loads(payload)["as_of"] == "2026-06-05T02:00:00Z"
+
+
+def _commit_offset_during_payload_read(db_path: Path, read):
+    """Commit one ordinary +08:00 snapshot when the payload SELECT begins."""
+    ready = threading.Event()
+    committed = threading.Event()
+    errors: list[str] = []
+
+    def writer() -> None:
+        try:
+            if not ready.wait(5):
+                errors.append("payload read did not start")
+                return
+            SQLiteRepository(db_path).save_market_snapshot(
+                MarketSnapshot.model_validate(_payload("A", "2026-06-05T09:00:00+08:00"))
+            )
+        except sqlite3.Error as exc:
+            errors.append(f"{type(exc).__name__}: {exc}")
+        finally:
+            committed.set()
+
+    def trace(sql: str) -> None:
+        compact = " ".join(sql.split())
+        if "SELECT payload" not in compact or "market_snapshots" not in compact:
+            return
+        ready.set()
+        if not committed.wait(5):
+            errors.append("offset snapshot did not commit")
+
+    class TracingRepository(SQLiteRepository):
+        def _connect(self) -> sqlite3.Connection:
+            conn = super()._connect()
+            conn.set_trace_callback(trace)
+            return conn
+
+    class TracingDashboard(DashboardRepository):
+        def _connect(self) -> sqlite3.Connection:
+            conn = super()._connect()
+            conn.set_trace_callback(trace)
+            return conn
+
+    thread = threading.Thread(target=writer)
+    thread.start()
+    try:
+        result = read(TracingRepository(db_path), TracingDashboard(db_path))
+    finally:
+        committed.set()
+        thread.join(timeout=5)
+    assert not thread.is_alive()
+    assert errors == []
+    return result
+
+
+def _stored_created_at(repo) -> dict[str, str]:
+    with sqlite3.connect(repo.db_path) as conn:
+        return dict(conn.execute("SELECT snapshot_id, created_at FROM market_snapshots"))
+
+
+def test_wal_two_statement_read_stays_on_one_snapshot(tmp_path: Path):
+    market = "demo-candidate"
+    instant = datetime(2026, 6, 5, 2, tzinfo=UTC)
+
+    def fresh(name: str) -> SQLiteRepository:
+        repository = SQLiteRepository(tmp_path / name)
+        _enable_wal(repository)
+        _save_utc_snapshot(repository)
+        return repository
+
+    def dashboard_list(_repository, dashboard):
+        rows = dashboard.list_market_snapshots(market, limit=1)
+        assert len(rows) == 1
+        assert rows[0].as_of.astimezone(UTC) == instant
+        return [item.snapshot_id for item in rows]
+
+    repo = fresh("dashboard-list.sqlite")
+    assert _commit_offset_during_payload_read(repo.db_path, dashboard_list) == ["B"]
+    follow = DashboardRepository(repo.db_path).list_market_snapshots(market, limit=1)
+    assert [item.snapshot_id for item in follow] == ["B"]
+    assert follow[0].as_of.astimezone(UTC) == instant
+    assert _stored_created_at(repo) == {
+        "A": "2026-06-05T09:00:00+08:00",
+        "B": "2026-06-05T02:00:00+00:00",
+    }
+
+    def repository_list(repository, _dashboard):
+        rows = repository.list_market_snapshots(market, limit=1)
+        assert rows[0].as_of.astimezone(UTC) == instant
+        return [item.snapshot_id for item in rows]
+
+    repo = fresh("repository-list.sqlite")
+    assert _commit_offset_during_payload_read(repo.db_path, repository_list) == ["B"]
+    assert [item.snapshot_id for item in repo.list_market_snapshots(market, limit=1)] == ["B"]
+
+    expected_export = [
+        ("A", "2026-06-05T09:00:00+08:00"),
+        ("B", "2026-06-05T02:00:00Z"),
+    ]
+
+    def dashboard_export(_repository, dashboard):
+        return [(item["snapshot_id"], item["as_of"]) for item in dashboard.export_payloads("market_snapshots")]
+
+    repo = fresh("dashboard-export.sqlite")
+    assert _commit_offset_during_payload_read(repo.db_path, dashboard_export) == expected_export
+    quiet = DashboardRepository(repo.db_path).export_payloads("market_snapshots")
+    assert [(item["snapshot_id"], item["as_of"]) for item in quiet] == expected_export
+
+    def repository_export(repository, _dashboard):
+        return [(item["snapshot_id"], item["as_of"]) for item in repository.export_payloads("market_snapshots")]
+
+    repo = fresh("repository-export.sqlite")
+    assert _commit_offset_during_payload_read(repo.db_path, repository_export) == expected_export
+    assert _stored_created_at(repo)["A"] == "2026-06-05T09:00:00+08:00"
+    assert _stored_created_at(repo)["B"] == "2026-06-05T02:00:00+00:00"
+
+
+def test_open_transaction_list_and_export_share_one_snapshot(tmp_path: Path):
+    repo = SQLiteRepository(tmp_path / "transaction.sqlite")
+    _enable_wal(repo)
+    _save_utc_snapshot(repo)
+    market = "demo-candidate"
+    with repo.transaction(write=False) as tx:
+        assert tx.count("market_snapshots") == 1
+        SQLiteRepository(repo.db_path).save_market_snapshot(
+            MarketSnapshot.model_validate(_payload("A", "2026-06-05T09:00:00+08:00"))
+        )
+        assert [item.snapshot_id for item in tx.list_market_snapshots(market, limit=1)] == ["B"]
+        exported = list(tx.export_payloads("market_snapshots"))
+        assert [(item["snapshot_id"], item["as_of"]) for item in exported] == [
+            ("B", "2026-06-05T02:00:00Z")
+        ]
+    assert [item.snapshot_id for item in repo.list_market_snapshots(market, limit=1)] == ["B"]
+    assert [item.snapshot_id for item in DashboardRepository(repo.db_path).list_market_snapshots(market, limit=1)] == ["B"]
+    assert [(item["snapshot_id"], item["as_of"]) for item in repo.export_payloads("market_snapshots")] == [
+        ("A", "2026-06-05T09:00:00+08:00"),
+        ("B", "2026-06-05T02:00:00Z"),
+    ]
+    with repo.transaction() as tx:
+        assert [item.snapshot_id for item in tx.list_market_snapshots(market, limit=1)] == ["B"]
+        assert [item["snapshot_id"] for item in tx.export_payloads("market_snapshots")] == ["A", "B"]
+        assert [item["as_of"] for item in tx.export_payloads("market_snapshots")] == [
+            "2026-06-05T09:00:00+08:00",
+            "2026-06-05T02:00:00Z",
+        ]
 
 
 def _prepare(repo, snapshot, evidence, as_of, now):

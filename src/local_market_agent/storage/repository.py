@@ -37,7 +37,8 @@ T = TypeVar("T", bound=BaseModel)
 
 # Absolute UTC instant for offset text, then the stored text for timezone-less or empty values.
 # `2026-06-05T09:00:00+08:00` is 01:00Z and sorts before `2026-06-05T02:00:00Z`.
-# Same instants share one key. Lists append `rowid DESC`; oldest-first export appends `rowid ASC`.
+# Same instants share one key. List and export use this key in the same SELECT as payload:
+# lists add `rowid DESC`, and oldest-first export adds `rowid ASC`.
 _ABSOLUTE_CREATED_AT = """
 CASE
   WHEN instr(created_at, 'T') > 0 AND (
@@ -101,24 +102,6 @@ CASE
   ), created_at)
   ELSE created_at
 END
-""".strip()
-
-# Python `isoformat()` UTC is 25 or 32 characters and ends in `+00:00`.
-# That shared suffix sorts in the same order as the absolute key, including `rowid` ties.
-# `.000000+00:00` is excluded: padding makes it the same instant as the 25-character form.
-_CANONICAL_UTC_OFFSET = """
-(
-    substr(created_at, -6) = '+00:00'
-    AND (
-        length(created_at) = 25
-        OR (
-            length(created_at) = 32
-            AND substr(created_at, 20, 1) = '.'
-            AND substr(created_at, 21, 6) GLOB '[0-9][0-9][0-9][0-9][0-9][0-9]'
-            AND substr(created_at, 21, 6) != '000000'
-        )
-    )
-)
 """.strip()
 
 
@@ -282,23 +265,6 @@ class SQLiteRepository:
             return None
         return model_cls.model_validate_json(row["payload"])
 
-    def _timestamp_order_key(
-        self,
-        conn: sqlite3.Connection,
-        table: str,
-        where: str,
-        params: list[str | int],
-    ) -> str:
-        """Absolute UTC key, or stored text when every row is canonical `+00:00`."""
-        connector = "AND" if where else "WHERE"
-        row = conn.execute(
-            f"SELECT 1 FROM {table} {where} {connector} NOT ({_CANONICAL_UTC_OFFSET}) LIMIT 1",
-            params,
-        ).fetchone()
-        if row is None:
-            return "created_at"
-        return _ABSOLUTE_CREATED_AT
-
     def _list(
         self,
         table: str,
@@ -311,16 +277,16 @@ class SQLiteRepository:
         if market_id is not None:
             where = "WHERE market_id = ?"
             params.append(market_id)
+        limit_clause = ""
+        if limit is not None:
+            limit_clause = "LIMIT ?"
+            params.append(limit)
+        # One SELECT keeps the absolute key and the payload rows on one snapshot.
+        query = (
+            f"SELECT payload FROM {table} {where} "
+            f"ORDER BY {_ABSOLUTE_CREATED_AT} DESC, rowid DESC {limit_clause}"
+        )
         with self._connection() as conn:
-            order_key = self._timestamp_order_key(conn, table, where, params)
-            limit_clause = ""
-            if limit is not None:
-                limit_clause = "LIMIT ?"
-                params.append(limit)
-            query = (
-                f"SELECT payload FROM {table} {where} "
-                f"ORDER BY {order_key} DESC, rowid DESC {limit_clause}"
-            )
             rows = conn.execute(query, params).fetchall()
         return [model_cls.model_validate_json(row["payload"]) for row in rows]
 
@@ -502,11 +468,11 @@ class SQLiteRepository:
         if table not in self.TABLES:
             msg = f"unknown table: {table}"
             raise ValueError(msg)
+        query = (
+            f"SELECT payload FROM {table} ORDER BY {_ABSOLUTE_CREATED_AT} ASC, rowid ASC"
+        )
         with self._connection() as conn:
-            order_key = self._timestamp_order_key(conn, table, "", [])
-            rows = conn.execute(
-                f"SELECT payload FROM {table} ORDER BY {order_key} ASC, rowid ASC"
-            ).fetchall()
+            rows = conn.execute(query).fetchall()
         for row in rows:
             yield json.loads(row["payload"])
 
