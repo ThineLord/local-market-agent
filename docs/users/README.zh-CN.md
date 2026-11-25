@@ -36,7 +36,7 @@ python ui/server.py
 
 打开 **http://127.0.0.1:8502/#watchlist/screening**。一次可筛查 1–50 个市场，搜索、筛选、查看检查项和输入哈希，或导出 CSV。示例包含候选、缺少研究、价差过宽、缺少卖价和过期快照。固定时间用于历史合成示例；不传 `--as-of` 时，旧快照会被标为过期。
 
-每次结果保存在 `data/reports/watchlist/screen-<id>/report.json` 与 `report.md`；`latest.json` 提供最新结果。筛查不使用 LLM、不打开交易数据库、不批准证据，也不创建订单。研究候选仍须经过后续风险审查与相应人工审批流程。输入格式、可选 Kalshi/Polymarket 公开快照和限制见[观察列表说明](../reference/WATCHLIST_SCREENING.md)。
+每次结果保存在 `data/reports/watchlist/screen-<id>/report.json` 与 `report.md`；`latest.json` 提供最新结果。筛查不使用 LLM、不打开交易数据库、不批准证据，也不创建订单。研究候选仍须经过后续风险审查与相应人工审批流程。已保存简报的每条支持证据和反证都必须自带非空证据 ID 和带时区的检索时间；发布时间、检索时间、简报创建时间和审查时间按此顺序排列。检索可以晚于快照，只要不晚于简报形成。一条异常简报只影响该市场。输入格式、可选 Kalshi/Polymarket 公开快照和限制见[观察列表说明](../reference/WATCHLIST_SCREENING.md)。
 
 仪表板仅监听回环地址，以只读方式读取 SQLite；没有数据库时会明确显示示例预览。端口占用时使用 `python ui/server.py --port 8503`。界面支持记录搜索、排序、筛选、CSV 导出、详情抽屉、证据/反证、审计关联，以及 Light、Dark、System 外观模式。背景动画可暂停，并遵循系统减少动态效果设置。
 
