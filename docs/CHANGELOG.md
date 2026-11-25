@@ -4,6 +4,7 @@ Application releases use `vMAJOR.MINOR.PATCH`. See [version management](maintain
 
 ## Unreleased
 
+- Order stored market snapshots by absolute time before the row limit. `2026-06-05T09:00:00+08:00` is 01:00Z and is older than `2026-06-05T02:00:00Z`; `2026-06-04T23:00:00-04:00` is 03:00Z and is newer. The same instant still keeps the newest stored row. Offset text already in the database stays as written. Timezone-less and empty timestamps keep their previous order.
 - Count a paper order's saved opening fee and each recorded closing fill once in a new daily performance report. A missing opening fill still includes that opening fee and the recorded closing fill. An order with no fills keeps its saved fee, and a complete open-and-close pair is not counted twice. Building the report again does not add the previous total or rewrite an older report.
 - Keep one audit-chain row for a paper order when newer risk decisions for the same signal push its approval outside the latest 100 rows. That row still uses the order's own decision, signal, and brief, loaded by ID. A parent that is not in the database stays missing, and the order is not attached to another decision for the same signal.
 - Saved watchlist briefs must include a non-empty `evidence_id` and an explicit timezone-aware `retrieved_at` on every supporting and counter-evidence item. Duplicate IDs are blocked. Require `published_at <= retrieved_at <= brief.created_at <=` the review time. Retrieval after the snapshot and before brief creation stays valid, and one bad brief blocks only that row.

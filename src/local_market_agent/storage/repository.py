@@ -35,6 +35,74 @@ from local_market_agent.schemas.models import (
 
 T = TypeVar("T", bound=BaseModel)
 
+# Absolute UTC instant for offset text, then the stored text for timezone-less or empty values.
+# `2026-06-05T09:00:00+08:00` is 01:00Z and sorts before `2026-06-05T02:00:00Z`.
+# Same instants share one key so the following `rowid DESC` stays the tie-break.
+_ABSOLUTE_CREATED_AT = """
+CASE
+  WHEN instr(created_at, 'T') > 0 AND (
+    (
+      substr(created_at, -1) IN ('Z', 'z')
+      AND substr(created_at, -2, 1) GLOB '[0-9]'
+    )
+    OR (
+      substr(created_at, -6, 1) IN ('+', '-')
+      AND substr(created_at, -3, 1) = ':'
+      AND substr(created_at, -5, 2) GLOB '[0-9][0-9]'
+      AND substr(created_at, -2) GLOB '[0-9][0-9]'
+      AND substr(created_at, -7, 1) GLOB '[0-9]'
+    )
+    OR (
+      substr(created_at, -5, 1) IN ('+', '-')
+      AND substr(created_at, -4) GLOB '[0-9][0-9][0-9][0-9]'
+      AND substr(created_at, -6, 1) GLOB '[0-9]'
+    )
+  )
+  THEN COALESCE((
+    SELECT CASE
+      WHEN shifted IS NULL OR length(body) < 19 OR substr(body, 11, 1) != 'T' THEN NULL
+      ELSE shifted || '.' || substr(frac || '000000', 1, 6) || 'Z'
+    END
+    FROM (
+      SELECT
+        body,
+        CASE
+          WHEN instr(body, '.') > 0 THEN substr(body, instr(body, '.') + 1)
+          ELSE ''
+        END AS frac,
+        strftime(
+          '%Y-%m-%dT%H:%M:%S',
+          replace(substr(body, 1, 19), 'T', ' '),
+          printf('%+d minutes', -offset_minutes)
+        ) AS shifted
+      FROM (
+        SELECT
+          CASE
+            WHEN substr(created_at, -1) IN ('Z', 'z')
+              THEN substr(created_at, 1, length(created_at) - 1)
+            WHEN substr(created_at, -3, 1) = ':'
+              AND substr(created_at, -6, 1) IN ('+', '-')
+              THEN substr(created_at, 1, length(created_at) - 6)
+            ELSE substr(created_at, 1, length(created_at) - 5)
+          END AS body,
+          CASE
+            WHEN substr(created_at, -1) IN ('Z', 'z') THEN 0
+            WHEN substr(created_at, -3, 1) = ':'
+              AND substr(created_at, -6, 1) IN ('+', '-')
+              THEN CASE WHEN substr(created_at, -6, 1) = '-' THEN -1 ELSE 1 END
+                   * (CAST(substr(created_at, -5, 2) AS INTEGER) * 60
+                      + CAST(substr(created_at, -2, 2) AS INTEGER))
+            ELSE CASE WHEN substr(created_at, -5, 1) = '-' THEN -1 ELSE 1 END
+                 * (CAST(substr(created_at, -4, 2) AS INTEGER) * 60
+                    + CAST(substr(created_at, -2, 2) AS INTEGER))
+          END AS offset_minutes
+      )
+    )
+  ), created_at)
+  ELSE created_at
+END
+""".strip()
+
 
 class SQLiteRepository:
     """Small JSON-object repository backed by SQLite."""
@@ -212,7 +280,10 @@ class SQLiteRepository:
         if limit is not None:
             limit_clause = "LIMIT ?"
             params.append(limit)
-        query = f"SELECT payload FROM {table} {where} ORDER BY created_at DESC, rowid DESC {limit_clause}"
+        query = (
+            f"SELECT payload FROM {table} {where} "
+            f"ORDER BY {_ABSOLUTE_CREATED_AT} DESC, rowid DESC {limit_clause}"
+        )
         with self._connection() as conn:
             rows = conn.execute(query, params).fetchall()
         return [model_cls.model_validate_json(row["payload"]) for row in rows]
