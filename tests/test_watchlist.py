@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -184,6 +185,179 @@ def test_saved_reports_are_preserved_and_dashboard_is_read_only(tmp_path):
     assert screening_payload(tmp_path / "absent.json")["status"] == "missing"
     latest.write_text('{"api_key":"do-not-display"}')
     assert screening_payload(latest) == {"status": "invalid", "report": None}
+
+
+def copied_demo(tmp_path, brief_change):
+    folder = tmp_path / "watchlist"
+    shutil.copytree(DEMO.parent, folder)
+    brief_path = folder / "candidate-brief.json"
+    brief = json.loads(brief_path.read_text())
+    brief_change(brief)
+    brief_path.write_text(json.dumps(brief))
+    return folder / "demo.json"
+
+
+def _failed(row):
+    return {check.code for check in row.checks if not check.passed}
+
+
+def test_saved_brief_import_accepts_retrieval_after_snapshot(tmp_path):
+    """Retrieval after the snapshot and at or before brief creation stays a candidate."""
+    clean = screen_watchlist(DEMO, as_of=REVIEW)
+
+    def _retimed(brief, retrieved_at, created_at=None):
+        if created_at is not None:
+            brief["created_at"] = created_at
+        for item in brief["evidence"] + brief["counter_evidence"]:
+            item["retrieved_at"] = retrieved_at
+
+    for retrieved_at, created_at in (
+        ("2026-06-05T00:00:30Z", None),
+        ("2026-06-05T00:01:00Z", None),
+        ("2026-06-05T00:02:00Z", "2026-06-05T00:02:00Z"),
+    ):
+        path = copied_demo(
+            tmp_path / retrieved_at.replace(":", ""),
+            lambda brief, retrieved_at=retrieved_at, created_at=created_at: _retimed(
+                brief, retrieved_at, created_at
+            ),
+        )
+        report = screen_watchlist(path, as_of=REVIEW)
+        assert report.counts == {"research_candidate": 1, "needs_research": 1, "blocked": 3}
+        assert report.orders_created == 0
+        assert report.execution_authorized is False
+        assert report.rows[0].status == "research_candidate"
+        assert report.rows[0].signal_action == "paper_buy_yes"
+        assert report.rows[1:] == clean.rows[1:]
+
+
+@pytest.mark.parametrize(
+    ("change", "code"),
+    [
+        (
+            lambda brief: brief.update(
+                evidence=[brief["evidence"][0], dict(brief["evidence"][0])],
+                counter_evidence=[],
+            ),
+            "evidence_identity",
+        ),
+        (
+            lambda brief: brief["counter_evidence"].append(dict(brief["evidence"][0])),
+            "evidence_identity",
+        ),
+        (
+            lambda brief: [item.pop("evidence_id") for item in brief["evidence"]],
+            "evidence_identity",
+        ),
+        (
+            lambda brief: brief["counter_evidence"][0].pop("evidence_id"),
+            "evidence_identity",
+        ),
+        (lambda brief: brief["evidence"][0].update(evidence_id="  "), "evidence_identity"),
+        (lambda brief: brief["evidence"][0].update(evidence_id=101), "evidence_identity"),
+        (
+            lambda brief: [
+                item.update(retrieved_at="2026-06-05T00:03:00Z")
+                for item in brief["evidence"] + brief["counter_evidence"]
+            ],
+            "evidence_retrieval",
+        ),
+        (
+            lambda brief: brief["counter_evidence"][0].update(retrieved_at="2026-06-05T00:03:00Z"),
+            "evidence_retrieval",
+        ),
+        (
+            lambda brief: [
+                item.update(retrieved_at="2026-06-05T00:01:30Z")
+                for item in brief["evidence"] + brief["counter_evidence"]
+            ],
+            "evidence_retrieval",
+        ),
+        (
+            lambda brief: brief["evidence"][0].update(retrieved_at="2026-06-05T00:00:30"),
+            "evidence_retrieval",
+        ),
+        (
+            lambda brief: [
+                item.pop("retrieved_at")
+                for item in brief["evidence"] + brief["counter_evidence"]
+            ],
+            "evidence_retrieval",
+        ),
+        (
+            lambda brief: brief["evidence"][0].update(retrieved_at="2026-05-01T00:00:00Z"),
+            "evidence_retrieval",
+        ),
+    ],
+)
+def test_saved_brief_evidence_anomaly_blocks_only_that_row(tmp_path, monkeypatch, change, code):
+    # Constructor defaults would otherwise mint unique IDs and a retrieval time
+    # inside the valid window, which is what made these rows research candidates.
+    minted = iter(range(1, 20))
+    monkeypatch.setattr(
+        "local_market_agent.schemas.models.new_id",
+        lambda prefix: f"{prefix}_minted_{next(minted)}",
+    )
+    monkeypatch.setattr(
+        "local_market_agent.schemas.models.utc_now",
+        lambda: datetime(2026, 6, 5, 0, 1, tzinfo=UTC),
+    )
+    clean = screen_watchlist(DEMO, as_of=REVIEW)
+    report = screen_watchlist(copied_demo(tmp_path, change), as_of=REVIEW)
+    row = report.rows[0]
+    assert row.status == "blocked"
+    assert row.signal_action is None
+    assert code in _failed(row)
+    assert report.orders_created == 0
+    assert report.execution_authorized is False
+    assert report.counts == {"needs_research": 1, "blocked": 4}
+    assert report.rows[1:] == clean.rows[1:]
+    assert "evidence_minted_" not in report.model_dump_json()
+
+
+def test_deleted_evidence_ids_do_not_screen_as_candidates_from_cli(tmp_path):
+    def drop_ids(brief):
+        brief["evidence"] = [brief["evidence"][0], dict(brief["evidence"][0])]
+        brief["counter_evidence"] = []
+        for item in brief["evidence"]:
+            del item["evidence_id"]
+
+    path = copied_demo(tmp_path, drop_ids)
+    result = CliRunner().invoke(
+        app,
+        [
+            "watchlist-screen",
+            "--watchlist",
+            str(path),
+            "--as-of",
+            "2026-06-05T00:02:00Z",
+            "--output-dir",
+            str(tmp_path / "out"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["orders_created"] == 0
+    assert payload["execution_authorized"] is False
+    assert payload["counts"] == {"blocked": 4, "needs_research": 1}
+    report = ScreenReport.model_validate_json(Path(payload["report_path"]).read_bytes())
+    assert report.rows[0].status == "blocked"
+    assert "evidence_identity" in _failed(report.rows[0])
+    assert report.rows[0].signal_action is None
+
+
+def test_evidence_constructor_still_mints_omitted_provenance():
+    from local_market_agent.schemas.models import EvidenceItem
+
+    item = EvidenceItem(
+        source="fixture",
+        title="In-memory evidence",
+        summary="Constructor defaults stay available outside saved-brief import.",
+        relevance_score=0.5,
+        credibility_score=0.5,
+    )
+    assert item.evidence_id.startswith("evidence_")
+    assert item.retrieved_at.tzinfo is not None
 
 
 def test_cli_demo_runs_without_side_effects_outside_report_dir(tmp_path, monkeypatch):

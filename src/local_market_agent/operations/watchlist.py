@@ -94,10 +94,106 @@ class ScreenReport(StrictBaseModel):
     ])
 
 
+_EVIDENCE_IDENTITY = (
+    "Saved supporting and counter-evidence each need a non-empty evidence_id, "
+    "and those IDs must be unique."
+)
+_EVIDENCE_RETRIEVAL = (
+    "Saved supporting and counter-evidence each need an explicit timezone-aware "
+    "retrieved_at, with published_at <= retrieved_at <= brief.created_at <= review time."
+)
+
+
 def _aware(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("An explicit timezone is required")
     return value.astimezone(UTC)
+
+
+def _explicit_aware(value: object) -> datetime | None:
+    """Parse a saved timestamp. Missing, blank, naive, or unparseable values are rejected."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if text.endswith(("Z", "z")):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(UTC)
+
+
+def _persistent_evidence_id(item: dict) -> str | None:
+    value = item.get("evidence_id")
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text or None
+
+
+def _raw_evidence_items(raw: dict) -> list[dict] | None:
+    items: list[dict] = []
+    for key in ("evidence", "counter_evidence"):
+        value = raw.get(key, [])
+        if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+            return None
+        items.extend(value)
+    return items
+
+
+def _saved_evidence_ok(raw: dict, items: list[dict], now: datetime) -> tuple[bool, bool]:
+    """Identity and retrieval checks for a saved brief. Does not mint missing fields."""
+    now = _aware(now)
+    persistent = [_persistent_evidence_id(item) for item in items]
+    identity_ok = all(item_id is not None for item_id in persistent) and len(persistent) == len(set(persistent))
+    created = _explicit_aware(raw.get("created_at"))
+    retrieval_ok = created is not None and created <= now
+    for item in items:
+        retrieved = _explicit_aware(item.get("retrieved_at")) if "retrieved_at" in item else None
+        published = _explicit_aware(item.get("published_at")) if "published_at" in item else None
+        if (
+            retrieved is None
+            or published is None
+            or created is None
+            or published > retrieved
+            or retrieved > created
+            or retrieved > now
+        ):
+            retrieval_ok = False
+    return identity_ok, retrieval_ok
+
+
+def _load_saved_brief(row: ScreenRow, raw: dict, settings: Settings) -> bool:
+    """Validate a saved brief before model defaults can fill evidence provenance.
+
+    Returns False when the row is already blocked and the constructor must not run.
+    """
+    items = _raw_evidence_items(raw)
+    if items is None:
+        raise ValueError("Saved brief evidence must be lists of objects")
+    identity_ok, retrieval_ok = _saved_evidence_ok(raw, items, row.checked_at)
+    _check(row, "evidence_identity", identity_ok, _EVIDENCE_IDENTITY)
+    _check(row, "evidence_retrieval", retrieval_ok, _EVIDENCE_RETRIEVAL)
+    brief_id = raw.get("brief_id")
+    if isinstance(brief_id, str) and brief_id.strip():
+        row.brief_id = brief_id
+    persistent = all(_persistent_evidence_id(item) is not None for item in items)
+    explicit_retrieval = all(
+        "retrieved_at" in item and _explicit_aware(item.get("retrieved_at")) is not None for item in items
+    )
+    # Missing IDs and retrieval times are fabricated by EvidenceItem defaults.
+    # Keep that constructor behavior for in-memory research objects, but do not
+    # let it turn an incomplete saved brief into a research candidate.
+    if not persistent or not explicit_retrieval:
+        return False
+    brief = ResearchBrief.model_validate(raw)
+    _screen_brief(row, brief, settings)
+    return True
 
 
 def _read_json(path: Path) -> tuple[object, str]:
@@ -170,10 +266,12 @@ def screen_watchlist(
                 continue
             raw, checksum = _read_json(_relative(path.parent, entry.brief_file))
             row.input_sha256["brief"] = checksum
+            if not isinstance(raw, dict):
+                raise ValueError("Saved briefs must be JSON objects")
             if "created_at" not in raw:
                 raise ValueError("Saved briefs must supply created_at")
-            brief = ResearchBrief.model_validate(raw)
-            _screen_brief(row, brief, settings)
+            if not _load_saved_brief(row, raw, settings):
+                continue
         except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
             row.status = "error"
             row.error_type = type(exc).__name__

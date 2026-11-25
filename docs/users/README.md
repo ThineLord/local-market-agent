@@ -108,7 +108,11 @@ The demo is synthetic and the explicit review time is historical. Omit `--as-of`
 for a current check; old fixtures will correctly be marked stale. Screening
 does not use an LLM, open the trading database, approve evidence, or create
 orders. A research candidate still requires portfolio risk review and human
-approval through the existing paper workflow.
+approval through the existing paper workflow. A saved brief must already give
+every supporting and counter-evidence item its own non-empty evidence ID and
+an explicit timezone-aware retrieval time, with publication, retrieval, brief
+creation, and the review time in that order. Retrieval after the snapshot and
+before the brief remains valid. One bad brief blocks only that market.
 
 See [Watchlist screening](../reference/WATCHLIST_SCREENING.md) for the input format,
 optional public Kalshi/Polymarket snapshots, decision rules, and limitations.

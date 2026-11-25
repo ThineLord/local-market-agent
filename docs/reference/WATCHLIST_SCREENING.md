@@ -48,9 +48,15 @@ replaced with a newly generated ID or current timestamp.
 
 `brief_file` is optional. When present it must contain a serialized
 `ResearchBrief` referencing that exact market and snapshot, with explicit
-`created_at`. Existing briefs containing any `must_not_trade_reasons` remain
-blocked, including generic paper-only warnings stored in that field. The
-screener does not silently reinterpret or remove those vetoes.
+`created_at`. Every supporting item and every counter-evidence item must carry
+its own non-empty `evidence_id` and an explicit timezone-aware `retrieved_at`.
+Saved screening does not mint either field. The saved chronology must satisfy
+`published_at <= retrieved_at <= brief.created_at <= review time`. Retrieval
+after the snapshot and before brief creation remains valid; duplicate evidence
+IDs are blocked. A failing brief changes only that row. Existing briefs
+containing any `must_not_trade_reasons` remain blocked, including generic
+paper-only warnings stored in that field. The screener does not silently
+reinterpret or remove those vetoes.
 
 ## Public snapshots
 
@@ -104,8 +110,12 @@ Default limits are the existing risk configuration: 300 seconds, maximum spread
 0.08, and minimum reported liquidity 100.
 
 Brief checks include exact snapshot linkage, creation between snapshot and review
-time, two distinct evidence IDs, timezone-aware publication times no later than
-the snapshot, no veto reasons, and a named unambiguous resolution source.
+time, unique non-empty evidence IDs (`evidence_identity`), explicit
+timezone-aware retrieval times (`evidence_retrieval`) ordered
+`published_at <= retrieved_at <= brief.created_at <= review time`,
+timezone-aware publication times no later than the snapshot, no veto reasons,
+and a named unambiguous resolution source. Retrieval may be later than the
+snapshot when it is still no later than brief creation.
 Strategy v1 then applies its existing confidence, evidence-quality, directional
 edge, and spread-buffer rules. These are input checks, not independent factual
 verification or evidence approval. Portfolio exposure, loss limits, fees, fills,
