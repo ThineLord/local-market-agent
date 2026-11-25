@@ -465,16 +465,20 @@ def _sandbox_data_semantics(market_data: dict[str, Any]) -> dict[str, Any]:
             "system integrity and paper controls, not real historical profitability."
         )
     elif market_data.get("is_historical"):
-        if market_data.get("has_settlement"):
-            label = "historical local dataset with settlement"
-            note = (
+        if market_data.get("profitability_claims_meaningful"):
+            label = market_data.get("paper_profit_label") or (
+                "historical local dataset with settlement"
+            )
+            note = market_data.get("paper_profit_note") or (
                 "A local time-indexed historical dataset with settlement/outcome fields "
                 "was used; paper PnL can be interpreted only within the dataset and "
                 "paper-fill assumptions."
             )
         else:
-            label = "historical local dataset without settlement"
-            note = (
+            label = market_data.get("paper_profit_label") or (
+                "historical local dataset without settlement"
+            )
+            note = market_data.get("paper_profit_note") or (
                 "A local time-indexed historical dataset was used, but settlement/outcome "
                 "fields are missing; final profitability claims are not meaningful."
             )

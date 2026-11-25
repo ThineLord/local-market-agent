@@ -38,7 +38,11 @@ time-appropriate evidence, fill/settlement assumptions, and benchmark
 methodology that PR-D1 intentionally does not add.
 
 PR-D2 adds `historical-file` for local JSONL datasets. This mode uses one row per
-simulated date and does not reuse a current snapshot across the range. It only
-marks profitability claims as meaningful when historical settlement/outcome
-metadata is present. See [the historical dataset schema](https://github.com/ThineLord/local-market-agent/blob/v0.5.0/docs/archive/phases/PHASE_7C_PR_D2_HISTORICAL_DATASET.md) for the
+simulated date and does not reuse a current snapshot across the range. It marks
+profitability claims as meaningful only for one selected market whose rows all
+permit paper PnL, are not calibration-only, and share a credible unambiguous
+settlement. Explicit paper-PnL prohibition, calibration-only rows, pending or
+missing settlement, ambiguous settlement, an unspecified market, and a market
+id that is not in the file do not. Original settlement labels stay visible.
+See [the historical dataset schema](https://github.com/ThineLord/local-market-agent/blob/v0.5.0/docs/archive/phases/PHASE_7C_PR_D2_HISTORICAL_DATASET.md) for the
 schema and backtest boundary.

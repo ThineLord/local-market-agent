@@ -11,7 +11,10 @@ from local_market_agent.adapters import (
     PolymarketAdapter,
     YFinanceAdapter,
 )
-from local_market_agent.operations.phase7_historical_dataset import load_historical_dataset
+from local_market_agent.operations.phase7_historical_dataset import (
+    load_historical_dataset,
+    qualify_historical_records,
+)
 from local_market_agent.schemas import EvidenceItem, Market, MarketSnapshot
 from local_market_agent.schemas.models import MarketStatus, MarketType, new_id
 
@@ -59,6 +62,19 @@ class Phase7MarketDataAudit:
     settlement_outcome: str | None = None
     closed_position_evaluation_supported: bool = False
     configuration_error: str | None = None
+    settlement_label_present: bool = False
+    settlement_ambiguous: bool | None = None
+    settlement_status: str | None = None
+    credible_settlement: bool = False
+    paper_pnl_allowed: bool | None = None
+    acceptance_candidate: bool | None = None
+    historical_profile: str | None = None
+    paper_profit_block_reason: str | None = None
+    paper_profit_label: str | None = None
+    paper_profit_note: str | None = None
+    eligible_historical_row_count: int = 0
+    ineligible_historical_row_count: int = 0
+    historical_record_qualifications: tuple[dict[str, Any], ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -86,6 +102,21 @@ class Phase7MarketDataAudit:
             "settlement_outcome": self.settlement_outcome,
             "closed_position_evaluation_supported": self.closed_position_evaluation_supported,
             "configuration_error": self.configuration_error,
+            "settlement_label_present": self.settlement_label_present,
+            "settlement_ambiguous": self.settlement_ambiguous,
+            "settlement_status": self.settlement_status,
+            "credible_settlement": self.credible_settlement,
+            "paper_pnl_allowed": self.paper_pnl_allowed,
+            "acceptance_candidate": self.acceptance_candidate,
+            "historical_profile": self.historical_profile,
+            "paper_profit_block_reason": self.paper_profit_block_reason,
+            "paper_profit_label": self.paper_profit_label,
+            "paper_profit_note": self.paper_profit_note,
+            "eligible_historical_row_count": self.eligible_historical_row_count,
+            "ineligible_historical_row_count": self.ineligible_historical_row_count,
+            "historical_record_qualifications": [
+                dict(row) for row in self.historical_record_qualifications
+            ],
         }
 
 
@@ -186,6 +217,8 @@ def load_phase7_market_inputs(
             evidence_source="historical-file" if record.evidence else "missing",
             evidence_count=len(record.evidence),
             settlement_outcome=record.settlement_outcome,
+            settlement_ambiguous=record.settlement_ambiguous,
+            settlement_status=record.settlement_status,
         )
     else:
         # normalize_market_source prevents this branch; keep it for type checkers.
@@ -222,6 +255,11 @@ def _historical_file_audit(
             configuration_error=(
                 "--historical-file is required when --market-source is historical-file"
             ),
+            paper_profit_block_reason="historical_file_missing",
+            paper_profit_label=_LABEL_SELECTION_ERROR,
+            paper_profit_note=(
+                "A historical file is required before paper profitability can be described."
+            ),
         )
     dataset = load_historical_dataset(historical_file)
     selected_market_id = market_id or dataset.default_market_id()
@@ -234,30 +272,55 @@ def _historical_file_audit(
         configuration_error = (
             f"historical dataset has no records for market_id={selected_market_id}"
         )
-    if configuration_error is None:
-        selected_records = dataset.records_for_market(selected_market_id)
-        start_date, end_date = dataset.range_for_market(selected_market_id)
-        has_settlement = dataset.has_settlement_for_market(selected_market_id)
-        has_evidence = dataset.has_evidence_for_market(selected_market_id)
-        settlement_coverage = dataset.settlement_coverage_for_market(selected_market_id)
-        warnings = list(dataset.warnings)
-        if not has_settlement and dataset.has_settlement:
-            warnings.append(
-                "Selected historical market has no settlement/outcome fields; "
-                "final profitability claims are not meaningful."
-            )
-        if not has_evidence and dataset.has_evidence:
-            warnings.append(
-                "Selected historical market has no evidence records; research evidence "
-                "is missing/limited."
-            )
-    else:
-        selected_records = dataset.records
-        start_date, end_date = (dataset.start_date, dataset.end_date)
-        has_settlement = dataset.has_settlement
-        has_evidence = dataset.has_evidence
-        settlement_coverage = dataset.settlement_coverage
-        warnings = list(dataset.warnings)
+    if configuration_error is not None:
+        block_reason = (
+            "market_unspecified"
+            if selected_market_id is None
+            else "market_not_in_dataset"
+        )
+        return Phase7MarketDataAudit(
+            market_source=MARKET_SOURCE_HISTORICAL_FILE,
+            market_id=selected_market_id,
+            data_mode=DATA_MODE_HISTORICAL_LOCAL,
+            network_calls_enabled=False,
+            is_fixture=False,
+            is_historical=True,
+            is_snapshot_only=False,
+            read_only=True,
+            can_create_orders=False,
+            profitability_claims_meaningful=False,
+            requires_market_id=False,
+            evidence_source="unknown",
+            historical_file=str(Path(historical_file)),
+            historical_record_count=len(dataset.records),
+            historical_start_date=dataset.start_date.isoformat(),
+            historical_end_date=dataset.end_date.isoformat(),
+            historical_dataset_warnings=dataset.warnings,
+            has_settlement=False,
+            settlement_coverage="not_applicable",
+            closed_position_evaluation_supported=False,
+            configuration_error=configuration_error,
+            paper_profit_block_reason=block_reason,
+            paper_profit_label=_LABEL_SELECTION_ERROR,
+            paper_profit_note=_selection_error_note(block_reason),
+        )
+    selected_records = dataset.records_for_market(selected_market_id)
+    start_date, end_date = dataset.range_for_market(selected_market_id)
+    qualification = qualify_historical_records(selected_records)
+    has_evidence = dataset.has_evidence_for_market(selected_market_id)
+    warnings = list(dataset.warnings)
+    if not qualification.settlement_label_present and dataset.has_settlement:
+        warnings.append(
+            "Selected historical market has no settlement/outcome fields; "
+            "final profitability claims are not meaningful."
+        )
+    if not has_evidence and dataset.has_evidence:
+        warnings.append(
+            "Selected historical market has no evidence records; research evidence "
+            "is missing/limited."
+        )
+    if qualification.block_reason not in {None, "no_credible_settlement"}:
+        warnings.append("Selected historical market cannot support paper-profit proof.")
     return Phase7MarketDataAudit(
         market_source=MARKET_SOURCE_HISTORICAL_FILE,
         market_id=selected_market_id,
@@ -268,7 +331,7 @@ def _historical_file_audit(
         is_snapshot_only=False,
         read_only=True,
         can_create_orders=False,
-        profitability_claims_meaningful=has_settlement,
+        profitability_claims_meaningful=qualification.profitability_claims_meaningful,
         requires_market_id=False,
         evidence_source="historical-file" if has_evidence else "missing",
         historical_file=str(Path(historical_file)),
@@ -276,10 +339,27 @@ def _historical_file_audit(
         historical_start_date=start_date.isoformat(),
         historical_end_date=end_date.isoformat(),
         historical_dataset_warnings=tuple(warnings),
-        has_settlement=has_settlement,
-        settlement_coverage=settlement_coverage,
-        closed_position_evaluation_supported=has_settlement,
-        configuration_error=configuration_error,
+        has_settlement=qualification.has_settlement,
+        settlement_coverage=dataset.settlement_coverage_for_market(selected_market_id),
+        settlement_outcome=qualification.settlement_outcome,
+        closed_position_evaluation_supported=(
+            qualification.closed_position_evaluation_supported
+        ),
+        settlement_label_present=qualification.settlement_label_present,
+        settlement_ambiguous=qualification.settlement_ambiguous,
+        settlement_status=qualification.settlement_status,
+        credible_settlement=qualification.credible_settlement,
+        paper_pnl_allowed=qualification.paper_pnl_allowed,
+        acceptance_candidate=qualification.acceptance_candidate,
+        historical_profile=qualification.historical_profile,
+        paper_profit_block_reason=qualification.block_reason,
+        paper_profit_label=qualification.paper_profit_label,
+        paper_profit_note=qualification.paper_profit_note,
+        eligible_historical_row_count=qualification.eligible_row_count,
+        ineligible_historical_row_count=qualification.ineligible_row_count,
+        historical_record_qualifications=tuple(
+            record.as_dict() for record in qualification.records
+        ),
     )
 
 
@@ -336,3 +416,22 @@ def _optional_text(value: str | None) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+_LABEL_SELECTION_ERROR = "historical local dataset selection error"
+_SELECTION_ERROR_NOTES = {
+    "market_unspecified": (
+        "No historical market is selected. Paper profitability claims are not meaningful."
+    ),
+    "market_not_in_dataset": (
+        "The requested market is not in the historical file. "
+        "Paper profitability claims are not meaningful."
+    ),
+    "historical_file_missing": (
+        "A historical file is required before paper profitability can be described."
+    ),
+}
+
+
+def _selection_error_note(reason: str) -> str:
+    return _SELECTION_ERROR_NOTES[reason]
