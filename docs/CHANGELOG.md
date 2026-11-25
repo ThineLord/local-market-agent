@@ -4,6 +4,7 @@ Application releases use `vMAJOR.MINOR.PATCH`. See [version management](maintain
 
 ## Unreleased
 
+- Count each recorded paper fill fee once in a new daily performance report, including the closing fee. An order whose fill fees are missing or do not match keeps that order's saved fee instead of becoming zero. Building the report again does not add the previous total or rewrite an older report.
 - Saved watchlist briefs must include a non-empty `evidence_id` and an explicit timezone-aware `retrieved_at` on every supporting and counter-evidence item. Duplicate IDs are blocked. Require `published_at <= retrieved_at <= brief.created_at <=` the review time. Retrieval after the snapshot and before brief creation stays valid, and one bad brief blocks only that row.
 - Keep an incomplete Hong Kong racing meeting unknown as a summary: pool hit rates are omitted until every ticket in that pool is settled, while settled outcomes and win counts remain.
 - An entitlement curve with a later unknown race keeps the settled prefix, records `stopped_at_race`, and does not fill the gap with zero or draw that prefix as a finished meeting. Research decisions remain NO_BET.
