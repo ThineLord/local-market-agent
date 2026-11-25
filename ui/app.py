@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -62,6 +63,33 @@ def _audit_chain_rows(repository: SQLiteRepository) -> list[dict[str, object]]:
 
     rows: list[dict[str, object]] = []
     seen: set[tuple[str, str, str, str]] = set()
+    resolved_briefs: dict[str, object | None] = dict(brief_by_id)
+    resolved_signals: dict[str, object | None] = dict(signal_by_id)
+    resolved_decisions: dict[str, object | None] = dict(decision_by_id)
+
+    def resolve(cache: dict[str, object | None], key: str, loader) -> object | None:
+        if not key:
+            return None
+        if key not in cache:
+            try:
+                cache[key] = loader(key)
+            except sqlite3.OperationalError:
+                cache[key] = None
+        return cache[key]
+
+    def brief_for(brief_id: str) -> object | None:
+        return resolve(resolved_briefs, brief_id, repository.load_brief)
+
+    def signal_for(signal_id: str) -> object | None:
+        return resolve(resolved_signals, signal_id, repository.load_signal)
+
+    def decision_for(decision_id: str) -> object | None:
+        return resolve(resolved_decisions, decision_id, repository.load_risk_decision)
+
+    def linked_brief(signal: object | None) -> object | None:
+        if signal is None:
+            return None
+        return brief_for(getattr(signal, "brief_id", "") or "")
 
     def add_row(brief: object | None, signal: object | None, decision: object | None, order: object | None) -> None:
         brief_id = getattr(brief, "brief_id", "") or getattr(signal, "brief_id", "")
@@ -98,15 +126,21 @@ def _audit_chain_rows(repository: SQLiteRepository) -> list[dict[str, object]]:
         )
 
     for signal in signals:
-        brief = brief_by_id.get(signal.brief_id)
+        brief = linked_brief(signal)
         linked_decisions = decisions_by_signal.get(signal.signal_id, [])
         if linked_decisions:
             for decision in linked_decisions:
                 for order in orders_by_decision.get(decision.risk_decision_id, [None]):
                     add_row(brief, signal, decision, order)
-        else:
-            for order in orders_by_signal.get(signal.signal_id, [None]):
-                add_row(brief, signal, None, order)
+        signal_orders = orders_by_signal.get(signal.signal_id, [])
+        if not linked_decisions and not signal_orders:
+            add_row(brief, signal, None, None)
+        for order in signal_orders:
+            if order.risk_decision_id in decision_by_id:
+                continue
+            # The approving decision is older than the 100-row window. Load that
+            # one ID instead of attaching the order to another decision on this signal.
+            add_row(brief, signal, decision_for(order.risk_decision_id), order)
 
     signaled_brief_ids = {signal.brief_id for signal in signals}
     for brief in briefs:
@@ -115,12 +149,15 @@ def _audit_chain_rows(repository: SQLiteRepository) -> list[dict[str, object]]:
 
     for decision in decisions:
         if decision.signal_id not in signal_by_id:
+            signal = signal_for(decision.signal_id)
             for order in orders_by_decision.get(decision.risk_decision_id, [None]):
-                add_row(None, None, decision, order)
+                add_row(linked_brief(signal), signal, decision, order)
 
     for order in orders:
-        if order.signal_id not in signal_by_id and order.risk_decision_id not in decision_by_id:
-            add_row(None, None, None, order)
+        if order.signal_id in signal_by_id or order.risk_decision_id in decision_by_id:
+            continue
+        signal = signal_for(order.signal_id)
+        add_row(linked_brief(signal), signal, decision_for(order.risk_decision_id), order)
 
     return rows
 
