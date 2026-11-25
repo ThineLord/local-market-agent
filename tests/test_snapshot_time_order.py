@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import sqlite3
 from datetime import UTC, datetime, timedelta, timezone
@@ -12,8 +13,16 @@ import pytest
 from local_market_agent.agents import ResearchBriefGenerator
 from local_market_agent.config import Settings
 from local_market_agent.paper.execution import PaperExecutionService
-from local_market_agent.risk import RiskEngine
-from local_market_agent.schemas import MarketSnapshot
+from local_market_agent.paper.ledger import PaperLedger
+from local_market_agent.risk import RiskEngine, RiskGateEvaluator
+from local_market_agent.schemas import (
+    MarketSnapshot,
+    PaperOrder,
+    RiskGateCheck,
+    RiskGateDecision,
+    RiskGateDecisionStatus,
+)
+from local_market_agent.schemas.models import OrderSide
 from local_market_agent.strategy import PredictionMarketEdgeStrategy
 from ui.server import DashboardRepository
 
@@ -59,6 +68,52 @@ def _ids(repo, market_id: str | None = None, limit: int | None = None) -> list[s
     return [item.snapshot_id for item in repo.list_market_snapshots(market_id, limit)]
 
 
+def _insert_row(repo, table: str, key_name: str, key: str, created_at: str, payload: dict) -> None:
+    body = dict(payload)
+    body[key_name] = key
+    body["created_at"] = created_at
+    with sqlite3.connect(repo.db_path) as conn:
+        conn.execute(
+            f"INSERT INTO {table} ({key_name}, market_id, created_at, payload) VALUES (?, ?, ?, ?)",
+            (key, body.get("market_id"), created_at, json.dumps(body, sort_keys=True)),
+        )
+
+
+def _order_body() -> dict:
+    return PaperOrder(
+        order_id="placeholder",
+        signal_id="signal-synthetic",
+        risk_decision_id="risk-synthetic",
+        market_id="demo-candidate",
+        created_at=datetime(2026, 6, 5, 2, tzinfo=UTC),
+        side=OrderSide.BUY_YES,
+        quantity=1,
+        limit_price=0.4,
+        fill_price=0.4,
+    ).model_dump(mode="json")
+
+
+def _gate_body() -> dict:
+    approved = RiskGateDecisionStatus.APPROVED
+    return RiskGateDecision(
+        risk_gate_decision_id="placeholder",
+        intent_id="intent-synthetic",
+        signal_id="signal-synthetic",
+        market_id="demo-candidate",
+        created_at=datetime(2026, 6, 5, 2, tzinfo=UTC),
+        status=approved,
+        reasons=["synthetic paper gate"],
+        checks=[
+            RiskGateCheck(
+                gate="synthetic",
+                status=approved,
+                passed=True,
+                reason="synthetic paper gate",
+            )
+        ],
+    ).model_dump(mode="json")
+
+
 def test_latest_snapshot_uses_absolute_time(repo):
     _insert(repo, "A", "2026-06-05T09:00:00+08:00")
     _insert(repo, "B", "2026-06-05T02:00:00Z")
@@ -98,6 +153,8 @@ def test_equivalent_timezone_literals_tie_break_on_rowid(repo):
     _insert(repo, "eight", "2026-06-05T10:00:00+08:00")
     assert _ids(repo, "demo-candidate", 1) == ["eight"]
     assert _ids(repo, "demo-candidate") == ["eight", "hour", "basic", "plus", "z"]
+    exported = [item["snapshot_id"] for item in repo.export_payloads("market_snapshots")]
+    assert exported == ["z", "plus", "basic", "hour", "eight"]
 
     _insert(repo, "eight-first", "2026-06-05T10:00:00+08:00", "other-tie")
     _insert(repo, "z-later", "2026-06-05T02:00:00Z", "other-tie")
@@ -158,12 +215,21 @@ def test_timezone_less_and_empty_timestamps_keep_text_order(repo):
         "empty-early",
     ]
     assert _ids(repo, "demo-candidate", 1) == ["naive-3"]
+    exported_ids = [item["snapshot_id"] for item in repo.export_payloads("market_snapshots")]
+    assert exported_ids == [
+        "empty-early",
+        "empty-late",
+        "naive-sec",
+        "naive-lo",
+        "naive-hi",
+        "naive-3",
+    ]
     assert [item.snapshot_id for item in DashboardRepository(repo.db_path).list_market_snapshots()] == _ids(repo)
     assert _stored(repo) == before
     assert repo.db_path.read_bytes() == db_bytes
 
 
-def test_export_keeps_stored_text_order(repo):
+def test_export_uses_absolute_time_oldest_first(repo):
     _insert(repo, "A", "2026-06-05T09:00:00+08:00")
     _insert(repo, "E", "2026-06-05T03:00:00+08:00")
     _insert(repo, "B", "2026-06-05T02:00:00Z")
@@ -171,8 +237,100 @@ def test_export_keeps_stored_text_order(repo):
     assert _ids(repo, "demo-candidate") == ["B", "A", "E"]
     by_id = {row[0]: json.loads(row[3]) for row in before}
     exported = list(repo.export_payloads("market_snapshots"))
-    assert exported == [by_id["B"], by_id["E"], by_id["A"]]
+    assert exported == [by_id["E"], by_id["A"], by_id["B"]]
+    assert exported[0]["as_of"] == "2026-06-05T03:00:00+08:00"
+    assert exported[1]["as_of"] == "2026-06-05T09:00:00+08:00"
+    assert exported[2]["as_of"] == "2026-06-05T02:00:00Z"
     assert _stored(repo) == before
+
+
+def test_public_exports_follow_absolute_time_oldest_first(repo, tmp_path: Path):
+    older = "2026-06-05T09:00:00+08:00"
+    newer = "2026-06-05T02:00:00Z"
+    order_body = _order_body()
+    gate_body = _gate_body()
+    _insert_row(repo, "paper_orders", "order_id", "A", older, order_body)
+    _insert_row(repo, "paper_orders", "order_id", "B", newer, order_body)
+    _insert_row(repo, "risk_gate_decisions", "risk_gate_decision_id", "A", older, gate_body)
+    _insert_row(repo, "risk_gate_decisions", "risk_gate_decision_id", "B", newer, gate_body)
+    before = repo.db_path.read_bytes()
+
+    assert [item.order_id for item in repo.list_paper_orders()] == ["B", "A"]
+    dashboard = DashboardRepository(repo.db_path)
+    assert [item.order_id for item in dashboard.list_paper_orders()] == ["B", "A"]
+    listed_gates = repo.list_risk_gate_decisions()
+    assert [item.risk_gate_decision_id for item in listed_gates] == ["B", "A"]
+
+    ledger = PaperLedger(repo)
+    jsonl = ledger.export_jsonl(tmp_path / "paper_orders.jsonl")
+    csv_path = ledger.export_csv(tmp_path / "paper_orders.csv")
+    orders = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines()]
+    assert [item["order_id"] for item in orders] == ["A", "B"]
+    assert [item["created_at"] for item in orders] == [older, newer]
+    with csv_path.open(encoding="utf-8", newline="") as handle:
+        assert [row["order_id"] for row in csv.DictReader(handle)] == ["B", "A"]
+
+    gate_path = RiskGateEvaluator(repository=repo).export_jsonl(tmp_path / "risk_gates.jsonl")
+    gates = [json.loads(line) for line in gate_path.read_text(encoding="utf-8").splitlines()]
+    assert [item["risk_gate_decision_id"] for item in gates] == ["A", "B"]
+    assert [item["created_at"] for item in gates] == [older, newer]
+    assert repo.db_path.read_bytes() == before
+
+
+def test_public_export_same_instant_follows_ascending_rowid(repo, tmp_path: Path):
+    older_row = "2026-06-05T10:00:00+08:00"
+    newer_row = "2026-06-05T02:00:00Z"
+    order_body = _order_body()
+    _insert_row(repo, "paper_orders", "order_id", "A", older_row, order_body)
+    _insert_row(repo, "paper_orders", "order_id", "B", newer_row, order_body)
+    before = repo.db_path.read_bytes()
+    assert [item.order_id for item in repo.list_paper_orders()] == ["B", "A"]
+    jsonl = PaperLedger(repo).export_jsonl(tmp_path / "paper_orders.jsonl")
+    orders = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines()]
+    assert [item["order_id"] for item in orders] == ["A", "B"]
+    assert [item["created_at"] for item in orders] == [older_row, newer_row]
+    assert repo.db_path.read_bytes() == before
+
+
+def test_uniform_utc_offset_uses_stored_text_order(repo):
+    _insert(repo, "early", "2026-06-05T01:00:00+00:00")
+    _insert(repo, "micro", "2026-06-05T02:00:00.000100+00:00")
+    _insert(repo, "later", "2026-06-05T02:00:00.000100+00:00")
+    _insert(repo, "whole", "2026-06-05T02:00:00+00:00")
+    with repo._connection() as conn:
+        assert repo._timestamp_order_key(conn, "market_snapshots", "", []) == "created_at"
+        filtered = repo._timestamp_order_key(
+            conn, "market_snapshots", "WHERE market_id = ?", ["demo-candidate"]
+        )
+        assert filtered == "created_at"
+    assert _ids(repo) == ["later", "micro", "whole", "early"]
+    assert _ids(repo, limit=1) == ["later"]
+    exported = [item["snapshot_id"] for item in repo.export_payloads("market_snapshots")]
+    assert exported == ["early", "whole", "micro", "later"]
+
+    _insert(repo, "offset", "2026-06-05T09:00:00+08:00", "other-market")
+    with repo._connection() as conn:
+        assert repo._timestamp_order_key(conn, "market_snapshots", "", []) != "created_at"
+        filtered = repo._timestamp_order_key(
+            conn, "market_snapshots", "WHERE market_id = ?", ["demo-candidate"]
+        )
+        assert filtered == "created_at"
+    assert _ids(repo, "demo-candidate", 1) == ["later"]
+
+
+def test_zero_fraction_utc_tie_stays_on_absolute_rowid(repo):
+    _insert(repo, "padded", "2026-06-05T02:00:00.000000+00:00")
+    _insert(repo, "plain", "2026-06-05T02:00:00+00:00")
+    with repo._connection() as conn:
+        assert repo._timestamp_order_key(conn, "market_snapshots", "", []) != "created_at"
+    assert _ids(repo, limit=1) == ["plain"]
+    exported = [item["snapshot_id"] for item in repo.export_payloads("market_snapshots")]
+    assert exported == ["padded", "plain"]
+    raw = {row[0]: row[2] for row in _stored(repo)}
+    assert raw == {
+        "padded": "2026-06-05T02:00:00.000000+00:00",
+        "plain": "2026-06-05T02:00:00+00:00",
+    }
 
 
 def _prepare(repo, snapshot, evidence, as_of, now):
