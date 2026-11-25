@@ -9,26 +9,20 @@ from local_market_agent.storage import SQLiteRepository
 
 
 def _total_fees(orders: list[PaperOrder], fills: list[PaperFill]) -> float:
-    """Count opening and closing fill fees once when those fills are complete.
+    """Count each order's opening fee and each recorded closing fill once.
 
-    A fill set is complete for an order when its non-closing fees equal the fee
-    stored on that order. Closing fills are then included once. Historical
-    orders that have no fill rows, or whose fill fees do not match, keep the
-    order fee. That avoids reporting zero when older databases never stored a
-    complete fill. The total is recalculated from current rows, so building
-    another report does not add the previous total again.
+    The opening fee stays on the order. Closing a position records its fee on a
+    fill and does not add it to that order, so the report adds the two amounts
+    separately. Opening fills are not added again; a complete open-and-close
+    pair would otherwise count the opening fee twice. An order with no fills
+    keeps its saved opening fee. The total is recalculated from current rows,
+    so building another report does not add the previous total again.
     """
-    fills_by_order: dict[str, list[PaperFill]] = {}
+    closing_fees: dict[str, float] = {}
     for fill in fills:
-        fills_by_order.setdefault(fill.order_id, []).append(fill)
-    total = 0.0
-    for order in orders:
-        order_fills = fills_by_order.get(order.order_id, [])
-        opening_fees = round(sum(fill.fees for fill in order_fills if not fill.is_closing), 4)
-        if order_fills and opening_fees == round(order.fees, 4):
-            total += sum(fill.fees for fill in order_fills)
-        else:
-            total += order.fees
+        if fill.is_closing:
+            closing_fees[fill.order_id] = closing_fees.get(fill.order_id, 0.0) + fill.fees
+    total = sum(order.fees + closing_fees.get(order.order_id, 0.0) for order in orders)
     return round(total, 4)
 
 

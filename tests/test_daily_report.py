@@ -208,6 +208,57 @@ def test_daily_report_closed_order_without_fills_keeps_saved_order_fee(repo, bri
     assert report.orders == 1
 
 
+def test_daily_report_missing_opening_fill_keeps_closing_fill(repo, brief, snapshot):
+    ledger, order, opening, position = _approved_fill(repo, brief, snapshot)
+    closed = ledger.close_position(position.position_id, close_price=1.0)
+    closing = next(
+        fill
+        for fill in repo.list_paper_fills()
+        if fill.order_id == order.order_id and fill.is_closing
+    )
+    assert not opening.is_closing
+    assert order.fees == opening.fees == 0.1
+    assert closing.fees == 0.1957
+    orders_before = [item.model_dump(mode="json") for item in repo.list_paper_orders()]
+    saved = PerformanceReport(
+        starting_cash=10_000,
+        ending_cash=10_000,
+        realized_pnl=0,
+        unrealized_pnl=0,
+        total_fees=0.1,
+        open_positions=0,
+        orders=1,
+        notes=["historical report"],
+    )
+    repo.save_performance_report(saved)
+
+    with sqlite3.connect(repo.db_path) as connection:
+        connection.execute("DELETE FROM paper_fills WHERE fill_id = ?", (opening.fill_id,))
+
+    remaining = repo.list_paper_fills()
+    assert [fill.fill_id for fill in remaining] == [closing.fill_id]
+    assert remaining[0].fees == 0.1957
+
+    report = DailyReportService(repo).build_report()
+    again = DailyReportService(repo).build_report()
+
+    assert report.total_fees == 0.2957
+    assert again.total_fees == report.total_fees
+    assert again.report_id != report.report_id
+    assert repo.load_performance_report(report.report_id).total_fees == 0.2957
+    assert repo.load_performance_report(saved.report_id).model_dump(mode="json") == saved.model_dump(
+        mode="json"
+    )
+    assert report.orders == 1
+    assert report.open_positions == 0
+    assert report.realized_pnl == closed.realized_pnl
+    assert report.unrealized_pnl == 0
+    assert report.ending_cash == round(report.starting_cash + report.realized_pnl, 4)
+    assert [item.model_dump(mode="json") for item in repo.list_paper_orders()] == orders_before
+    assert repo.list_paper_fills()[0].model_dump(mode="json") == closing.model_dump(mode="json")
+    assert ledger.snapshot_portfolio(persist=False).total_fees == closing.fees
+
+
 def test_daily_report_duplicate_opening_fill_does_not_inflate_fees(repo, brief, snapshot):
     _ledger, order, fill, _position = _approved_fill(repo, brief, snapshot)
     repo.append_paper_fill(fill.model_copy(update={"fill_id": "paper_fill_duplicate"}))
