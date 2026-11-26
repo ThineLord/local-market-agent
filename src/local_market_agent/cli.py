@@ -53,7 +53,7 @@ from local_market_agent.paper.execution import PaperExecutionService
 from local_market_agent.reporting import DailyReportService
 from local_market_agent.risk import RiskEngine
 from local_market_agent.schemas import MarketSnapshot, ResearchBrief, Signal
-from local_market_agent.storage import SQLiteRepository
+from local_market_agent.storage import ReadOnlySQLiteRepository, SQLiteRepository
 from local_market_agent.strategy import PredictionMarketEdgeStrategy
 
 app = typer.Typer(help="Local Market Agent: offline-first research and paper trading.")
@@ -140,6 +140,10 @@ def _settings(
 
 def _repository(settings: Settings) -> SQLiteRepository:
     return SQLiteRepository(settings.db_path)
+
+
+def _readonly_repository(settings: Settings) -> ReadOnlySQLiteRepository:
+    return ReadOnlySQLiteRepository(settings.db_path)
 
 
 def _optional_cli_text(value: str | None) -> str | None:
@@ -345,7 +349,7 @@ def paper_execute(
 @app.command()
 def paper_status(db: Annotated[Path | None, typer.Option()] = None) -> None:
     """Inspect prepared intents and approval history without executing."""
-    repo = _repository(_settings(db))
+    repo = _readonly_repository(_settings(db))
     typer.echo(json.dumps({"intents": [x.model_dump(mode="json") for x in repo.list_prepared_executions()],
         "approvals": [x.model_dump(mode="json") for x in repo.list_paper_approvals()]}, sort_keys=True))
 
@@ -354,7 +358,7 @@ def paper_status(db: Annotated[Path | None, typer.Option()] = None) -> None:
 def paper_replay(intent_id: Annotated[str, typer.Option()], db: Annotated[Path | None, typer.Option()] = None) -> None:
     """Verify an executed intent's sealed inputs, approval and opening transition."""
     from local_market_agent.integrity import verify_execution
-    result = verify_execution(_repository(_settings(db)), intent_id)
+    result = verify_execution(_readonly_repository(_settings(db)), intent_id)
     typer.echo(json.dumps(result, sort_keys=True))
     if not result["ok"]:
         raise typer.Exit(1)
@@ -423,7 +427,7 @@ def workflow_status_command(db: Annotated[Path | None, typer.Option()] = None) -
     """Read local workflow status and next commands."""
     from local_market_agent.workflow import workflow_status
     settings = _settings(db)
-    typer.echo(json.dumps(workflow_status(_repository(settings), settings), sort_keys=True))
+    typer.echo(json.dumps(workflow_status(_readonly_repository(settings), settings), sort_keys=True))
 
 
 @app.command()
