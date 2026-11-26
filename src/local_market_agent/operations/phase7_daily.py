@@ -137,6 +137,7 @@ class Phase7DailyRunner:
                 market_source,
                 market_id=market_id,
                 historical_file=historical_file,
+                as_of=started_at,
             ).as_dict()
         except ValueError as exc:
             market_data_audit = {
@@ -290,15 +291,10 @@ class Phase7DailyRunner:
                 report_date=started_at.date(),
                 generated_at=started_at,
                 output_path=report_path,
-                run_metadata={
-                    "dry_run": dry_run,
-                    "state_scope": "temporary preview" if dry_run else "paper ledger",
-                    "market_source": market_data_audit.get("market_source"),
-                    "data_mode": market_data_audit.get("data_mode"),
-                    "profitability_claims_meaningful": market_data_audit.get(
-                        "profitability_claims_meaningful"
-                    ),
-                },
+                run_metadata=_daily_report_metadata(
+                    dry_run=dry_run,
+                    market_data_audit=market_data_audit,
+                ),
             )
             manifest = build_phase7_run_manifest(
                 run_id=run_id,
@@ -529,6 +525,31 @@ def _gate_config(
     if require_manual_approval is None:
         return config
     return replace(config, require_manual_approval=require_manual_approval)
+
+
+def _daily_report_metadata(
+    *,
+    dry_run: bool,
+    market_data_audit: dict[str, Any],
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "dry_run": dry_run,
+        "state_scope": "temporary preview" if dry_run else "paper ledger",
+        "market_source": market_data_audit.get("market_source"),
+        "data_mode": market_data_audit.get("data_mode"),
+        "profitability_claims_meaningful": market_data_audit.get(
+            "profitability_claims_meaningful"
+        ),
+    }
+    if market_data_audit.get("is_historical"):
+        metadata["has_settlement"] = bool(market_data_audit.get("has_settlement"))
+        metadata["closed_position_evaluation_supported"] = market_data_audit.get(
+            "closed_position_evaluation_supported"
+        )
+        note = market_data_audit.get("paper_profit_note")
+        if note:
+            metadata["paper_profit_note"] = note
+    return metadata
 
 
 def _runner_cli_arguments(

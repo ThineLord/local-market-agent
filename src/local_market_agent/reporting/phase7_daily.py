@@ -199,6 +199,9 @@ def _run_metadata_rows(metadata: dict[str, Any]) -> list[list[str]]:
         ("market_source", "Market source"),
         ("data_mode", "Market data mode"),
         ("profitability_claims_meaningful", "Profitability claims meaningful"),
+        ("has_settlement", "Has settlement"),
+        ("closed_position_evaluation_supported", "Closed position evaluation supported"),
+        ("paper_profit_note", "Paper profit note"),
     ]:
         if field in metadata:
             rows.append([label, str(metadata[field])])
