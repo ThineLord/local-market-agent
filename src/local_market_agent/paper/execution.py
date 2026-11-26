@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 from local_market_agent.config import Settings
-from local_market_agent.integrity import seal_execution
+from local_market_agent.integrity import seal_execution, verify_execution
 from local_market_agent.paper.ledger import PaperLedger, _paper_side_and_limit
 from local_market_agent.risk import RiskEngine, RiskGateEvaluator
 from local_market_agent.risk.equity import loss_metrics, observe_equity_in_transaction
@@ -181,9 +181,39 @@ class PaperExecutionService:
             repo.save_paper_approval(approval)
         return approval
 
+    def _historical_execution(self, repo, intent_id):
+        """Return this intent's sealed order, or reject a receipt that does not verify.
+
+        No receipt leaves legacy and same-signal retries on the existing order path.
+        A verifying receipt is historical: a later quote or settlement is not rechecked.
+        """
+        if repo.load_execution_receipt(intent_id) is None:
+            return None
+        verified = verify_execution(repo, intent_id)
+        receipt = verified.get("receipt") or {}
+        order_id = (receipt.get("references") or {}).get("order")
+        order = repo.load_paper_order(order_id) if order_id else None
+        if (
+            verified["ok"]
+            and verified.get("intent_id") == intent_id
+            and receipt.get("intent_id") == intent_id
+            and order is not None
+        ):
+            return {
+                "status": "completed",
+                "intent_id": intent_id,
+                "reasons": ["Already executed; no duplicate fill"],
+                "order_id": order.order_id,
+            }
+        reasons = verified["errors"] or ["Execution receipt failed verification"]
+        return {"status": "rejected", "intent_id": intent_id, "reasons": reasons}
+
     def execute(self, intent_id, *, now=None):
         now = utc(now)
         with deterministic_model_context(seed=f"execute:{intent_id}", now=now), self.repository.transaction() as repo:
+            historical = self._historical_execution(repo, intent_id)
+            if historical is not None:
+                return historical
             prepared, snapshot, brief, signal, risk = self._load(repo, intent_id)
 
             def result(status, reasons, **extra):
