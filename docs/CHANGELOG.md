@@ -4,6 +4,10 @@ Application releases use `vMAJOR.MINOR.PATCH`. See [version management](maintain
 
 ## Unreleased
 
+## 0.5.2 — 2026-11-26
+
+- Historical replay snapshots use the observed market status until the settlement label is available. This keeps the paper preflight consistent with the as-of audit. An unrecognized status stays unknown.
+
 - `workflow-status` treats a paper order as this intent's execution only when this intent's receipt names that order. Another prepared intent for the same signal stays not executed: it is not described as approved or filled, and the read-only suggestion is `paper-replay` of the intent that holds the receipt when that order can be located. When the order cannot be located, the suggestion is `paper-status` and the reason says why. When multiple intents could own an order and its receipt is missing, the status is `unavailable` and the suggested query is `paper-status`. A single intent whose order has no receipt keeps a completed or settled explanation and suggests `paper-status` instead of a replay that cannot verify it. Pending approval is unchanged. Status and replay queries do not write the ledger.
 - Retrying a paper intent whose execution receipt still verifies returns that original order and writes nothing further. A later quote or a legal settlement does not change the completed execution. Intents without a verifiable receipt keep the existing approval, freshness, risk, and execution limits. A legacy order with no receipt still returns that order. A damaged receipt, or a receipt stored for another intent, is not treated as a completed execution.
 - `workflow-status`, `paper-status`, and `paper-replay` open the named ledger read-only. A missing path stays missing and still returns an empty status or the existing receipt-not-found result and exit code. An incomplete library reports absent tables and is left unchanged. A database that cannot be read is not reported as an empty library. Paths with spaces or URI characters use that same read-only URI connection. Write commands still create and migrate the database they are given.
@@ -22,6 +26,8 @@ Application releases use `vMAJOR.MINOR.PATCH`. See [version management](maintain
 - Reject Kalshi boolean prices. Legacy integer cents, including `1` as `0.01`, are unchanged. Boolean strings already failed conversion.
 - Reject a non-string public-screen pagination cursor even when it is falsy. A missing cursor still ends the scan, and the string cursor `"0"` still continues.
 - Keep a zero YES ask or a zero last price. Do not replace it with a later positive price. Ordinary paper opens still require a positive quote and per-intent approval.
+
+[English release notes](releases/0.5.2.md) · [中文发布说明](releases/0.5.2.zh-CN.md)
 
 ## 0.5.1 — 2026-11-09
 

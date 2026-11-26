@@ -37,6 +37,7 @@ class HistoricalMarketRecord:
     settlement_resolved_at: datetime | None = None
     settlement_label_available_at: datetime | None = None
     observation_time_explicit: bool = False
+    market_status_at_timestamp: MarketStatus = MarketStatus.OPEN
 
     @property
     def record_date(self) -> date:
@@ -48,7 +49,7 @@ class HistoricalMarketRecord:
             title=self.title,
             platform=self.platform,
             market_type=MarketType.PREDICTION,
-            status=MarketStatus.SETTLED if self.settlement_outcome else MarketStatus.OPEN,
+            status=MarketStatus.SETTLED if self.settlement_outcome else self.market_status_at_timestamp,
             outcomes=["yes", "no"],
         )
         return MarketSnapshot(
@@ -313,7 +314,18 @@ def _record_from_payload(
         settlement_resolved_at=settlement_resolved_at,
         settlement_label_available_at=settlement_label_available_at,
         observation_time_explicit=payload.get("timestamp") is not None,
+        market_status_at_timestamp=_observed_market_status(payload.get("market_status_at_timestamp")),
     )
+
+
+def _observed_market_status(value: object) -> MarketStatus:
+    if value is None:
+        # Older rows only recorded settlement outcomes.
+        return MarketStatus.OPEN
+    try:
+        return MarketStatus(str(value).strip().lower())
+    except ValueError:
+        return MarketStatus.UNKNOWN
 
 
 def _parse_timestamp(payload: dict[str, Any], *, line_number: int) -> datetime:

@@ -51,6 +51,6 @@ python ui/server.py
 | [`tests/`](../tests/) | 离线测试及可选网络检查 |
 | [`docs/`](README.md) | 用户/Agent 指南、技术文档与版本历史 |
 
-当前版本 **0.5.1** · [更新说明](releases/0.5.1.zh-CN.md) · [变更日志](CHANGELOG.md)
+当前版本 **0.5.2** · [更新说明](releases/0.5.2.zh-CN.md) · [变更日志](CHANGELOG.md)
 
 参与开发请先阅读 [AGENTS.md](../AGENTS.md)。Codex 实现，subagents 审查合并。安全默认值保持 `REAL_MONEY_ENABLED=false`、`ALLOW_LIVE_ORDERS=false`、`HUMAN_APPROVAL_REQUIRED=true`。

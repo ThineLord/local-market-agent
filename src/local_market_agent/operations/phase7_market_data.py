@@ -221,7 +221,6 @@ def load_phase7_market_inputs(
         record = input_record_at(dataset, now, market_id=market_id)
         if record_known_at(record, now):
             visible_record = record_with_visible_settlement(record, now)
-            snapshot = record.to_snapshot()
         else:
             # The only row for this day is still ahead. Keep its quotes as the
             # single-day input, and do not treat its settlement as observed.
@@ -231,7 +230,7 @@ def load_phase7_market_inputs(
                 settlement_ambiguous=None,
                 settlement_status=None,
             )
-            snapshot = visible_record.to_snapshot()
+        snapshot = visible_record.to_snapshot()
         evidence = list(record.evidence)
         audit = replace(
             audit,
