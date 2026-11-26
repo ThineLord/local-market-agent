@@ -12,8 +12,11 @@ from local_market_agent.adapters import (
     YFinanceAdapter,
 )
 from local_market_agent.operations.phase7_historical_dataset import (
+    HistoricalMarketRecord,
     load_historical_dataset,
     qualify_historical_records,
+    record_with_visible_settlement,
+    records_known_at,
 )
 from local_market_agent.schemas import EvidenceItem, Market, MarketSnapshot
 from local_market_agent.schemas.models import MarketStatus, MarketType, new_id
@@ -141,13 +144,18 @@ def phase7_market_data_audit(
     *,
     market_id: str | None = None,
     historical_file: str | Path | None = None,
+    as_of: datetime | None = None,
 ) -> Phase7MarketDataAudit:
     source = normalize_market_source(market_source)
     market_id = _optional_text(market_id)
     is_fixture = source == MARKET_SOURCE_FIXTURE
     is_historical_file = source == MARKET_SOURCE_HISTORICAL_FILE
     if is_historical_file:
-        return _historical_file_audit(market_id=market_id, historical_file=historical_file)
+        return _historical_file_audit(
+            market_id=market_id,
+            historical_file=historical_file,
+            as_of=as_of,
+        )
     requires_market_id = not is_fixture
     configuration_error = None
     if requires_market_id and not market_id:
@@ -188,6 +196,7 @@ def load_phase7_market_inputs(
         market_source,
         market_id=market_id,
         historical_file=historical_file,
+        as_of=now,
     )
     if audit.configuration_error:
         raise ValueError(audit.configuration_error)
@@ -208,6 +217,7 @@ def load_phase7_market_inputs(
     elif audit.market_source == MARKET_SOURCE_HISTORICAL_FILE:
         dataset = load_historical_dataset(historical_file)
         record = dataset.record_for_date(now.date(), market_id=market_id)
+        visible_record = record_with_visible_settlement(record, now)
         snapshot = record.to_snapshot()
         evidence = list(record.evidence)
         audit = replace(
@@ -216,9 +226,9 @@ def load_phase7_market_inputs(
             historical_record_date=record.record_date.isoformat(),
             evidence_source="historical-file" if record.evidence else "missing",
             evidence_count=len(record.evidence),
-            settlement_outcome=record.settlement_outcome,
-            settlement_ambiguous=record.settlement_ambiguous,
-            settlement_status=record.settlement_status,
+            settlement_outcome=visible_record.settlement_outcome,
+            settlement_ambiguous=visible_record.settlement_ambiguous,
+            settlement_status=visible_record.settlement_status,
         )
     else:
         # normalize_market_source prevents this branch; keep it for type checkers.
@@ -236,6 +246,7 @@ def _historical_file_audit(
     *,
     market_id: str | None,
     historical_file: str | Path | None,
+    as_of: datetime | None = None,
 ) -> Phase7MarketDataAudit:
     if historical_file is None:
         return Phase7MarketDataAudit(
@@ -305,22 +316,34 @@ def _historical_file_audit(
             paper_profit_note=_selection_error_note(block_reason),
         )
     selected_records = dataset.records_for_market(selected_market_id)
-    start_date, end_date = dataset.range_for_market(selected_market_id)
+    if as_of is not None:
+        selected_records = records_known_at(selected_records, as_of)
+    if selected_records:
+        start_date = min(record.record_date for record in selected_records)
+        end_date = max(record.record_date for record in selected_records)
+        settlement_coverage = _settlement_coverage(selected_records)
+    else:
+        start_date = None
+        end_date = None
+        settlement_coverage = "none"
     qualification = qualify_historical_records(selected_records)
-    has_evidence = dataset.has_evidence_for_market(selected_market_id)
+    has_evidence = any(record.evidence for record in selected_records)
     warnings = list(dataset.warnings)
-    if not qualification.settlement_label_present and dataset.has_settlement:
+    if not qualification.settlement_label_present and dataset.has_settlement and as_of is None:
         warnings.append(
             "Selected historical market has no settlement/outcome fields; "
             "final profitability claims are not meaningful."
         )
-    if not has_evidence and dataset.has_evidence:
+    if not has_evidence and dataset.has_evidence and as_of is None:
         warnings.append(
             "Selected historical market has no evidence records; research evidence "
             "is missing/limited."
         )
-    if qualification.block_reason not in {None, "no_credible_settlement"}:
+    if qualification.block_reason not in {None, "no_credible_settlement"} and as_of is None:
         warnings.append("Selected historical market cannot support paper-profit proof.")
+    row_qualifications = ()
+    if as_of is None:
+        row_qualifications = tuple(record.as_dict() for record in qualification.records)
     return Phase7MarketDataAudit(
         market_source=MARKET_SOURCE_HISTORICAL_FILE,
         market_id=selected_market_id,
@@ -336,11 +359,11 @@ def _historical_file_audit(
         evidence_source="historical-file" if has_evidence else "missing",
         historical_file=str(Path(historical_file)),
         historical_record_count=len(selected_records),
-        historical_start_date=start_date.isoformat(),
-        historical_end_date=end_date.isoformat(),
+        historical_start_date=start_date.isoformat() if start_date is not None else None,
+        historical_end_date=end_date.isoformat() if end_date is not None else None,
         historical_dataset_warnings=tuple(warnings),
         has_settlement=qualification.has_settlement,
-        settlement_coverage=dataset.settlement_coverage_for_market(selected_market_id),
+        settlement_coverage=settlement_coverage,
         settlement_outcome=qualification.settlement_outcome,
         closed_position_evaluation_supported=(
             qualification.closed_position_evaluation_supported
@@ -357,10 +380,17 @@ def _historical_file_audit(
         paper_profit_note=qualification.paper_profit_note,
         eligible_historical_row_count=qualification.eligible_row_count,
         ineligible_historical_row_count=qualification.ineligible_row_count,
-        historical_record_qualifications=tuple(
-            record.as_dict() for record in qualification.records
-        ),
+        historical_record_qualifications=row_qualifications,
     )
+
+
+def _settlement_coverage(records: tuple[HistoricalMarketRecord, ...]) -> str:
+    settled = sum(record.settlement_outcome is not None for record in records)
+    if settled == 0:
+        return "none"
+    if settled == len(records):
+        return "full"
+    return "partial"
 
 
 def _yfinance_snapshot(symbol: str) -> MarketSnapshot:

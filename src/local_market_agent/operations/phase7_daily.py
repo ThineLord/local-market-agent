@@ -137,6 +137,7 @@ class Phase7DailyRunner:
                 market_source,
                 market_id=market_id,
                 historical_file=historical_file,
+                as_of=started_at,
             ).as_dict()
         except ValueError as exc:
             market_data_audit = {
@@ -541,6 +542,7 @@ def _daily_report_metadata(
         ),
     }
     if market_data_audit.get("is_historical"):
+        metadata["has_settlement"] = bool(market_data_audit.get("has_settlement"))
         metadata["closed_position_evaluation_supported"] = market_data_audit.get(
             "closed_position_evaluation_supported"
         )

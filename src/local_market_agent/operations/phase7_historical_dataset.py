@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time
 from pathlib import Path
 from typing import Any
@@ -34,6 +34,8 @@ class HistoricalMarketRecord:
     acceptance_candidate: bool
     settlement_ambiguous: bool | None = None
     settlement_status: str | None = None
+    settlement_resolved_at: datetime | None = None
+    settlement_label_available_at: datetime | None = None
 
     @property
     def record_date(self) -> date:
@@ -269,10 +271,13 @@ def _record_from_payload(
     liquidity = _optional_nonnegative(payload.get("liquidity"), "liquidity", line_number)
     volume = _optional_nonnegative(payload.get("volume"), "volume", line_number)
     evidence = tuple(_evidence_items(payload.get("evidence"), timestamp, line_number=line_number))
-    settlement, settlement_ambiguous, settlement_status = _settlement_facts(
-        payload,
-        line_number=line_number,
-    )
+    (
+        settlement,
+        settlement_ambiguous,
+        settlement_status,
+        settlement_resolved_at,
+        settlement_label_available_at,
+    ) = _settlement_facts(payload, line_number=line_number)
     paper_pnl_allowed = _optional_bool(
         payload.get("paper_pnl_allowed"),
         default=not calibration_only,
@@ -304,6 +309,8 @@ def _record_from_payload(
         acceptance_candidate=acceptance_candidate,
         settlement_ambiguous=settlement_ambiguous,
         settlement_status=settlement_status,
+        settlement_resolved_at=settlement_resolved_at,
+        settlement_label_available_at=settlement_label_available_at,
     )
 
 
@@ -457,10 +464,12 @@ def _settlement_facts(
     payload: dict[str, Any],
     *,
     line_number: int,
-) -> tuple[str | None, bool | None, str | None]:
+) -> tuple[str | None, bool | None, str | None, datetime | None, datetime | None]:
     raw_settlement = payload.get("settlement")
     ambiguous = None
     status = None
+    resolved_at = None
+    label_available_at = None
     if isinstance(raw_settlement, dict):
         ambiguous = _optional_nullable_bool(
             raw_settlement.get("ambiguous"),
@@ -468,11 +477,21 @@ def _settlement_facts(
             line_number=line_number,
         )
         status = _optional_text(raw_settlement.get("status"))
+        resolved_at = _optional_timestamp(
+            raw_settlement.get("resolved_at"),
+            field="settlement.resolved_at",
+            line_number=line_number,
+        )
+        label_available_at = _optional_timestamp(
+            raw_settlement.get("label_available_at"),
+            field="settlement.label_available_at",
+            line_number=line_number,
+        )
     value = payload.get("settlement_outcome", payload.get("outcome", raw_settlement))
     if isinstance(value, dict):
         value = value.get("outcome")
     if value is None or value == "":
-        return None, ambiguous, status
+        return None, ambiguous, status, resolved_at, label_available_at
     normalized = str(value).strip().lower()
     if normalized not in SUPPORTED_SETTLEMENT_OUTCOMES:
         msg = (
@@ -480,7 +499,62 @@ def _settlement_facts(
             f"{value}"
         )
         raise ValueError(msg)
-    return normalized, ambiguous, status
+    return normalized, ambiguous, status, resolved_at, label_available_at
+
+
+def _optional_timestamp(value: object, *, field: str, line_number: int) -> datetime | None:
+    if value is None or value == "":
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        msg = f"historical JSONL line {line_number} has invalid {field}"
+        raise ValueError(msg) from exc
+    return _as_utc(parsed)
+
+
+def settlement_label_publication_time(record: HistoricalMarketRecord) -> datetime | None:
+    """Return when a settlement label may be shown, if the row documents that time."""
+    times = [
+        moment
+        for moment in (record.settlement_label_available_at, record.settlement_resolved_at)
+        if moment is not None
+    ]
+    if not times:
+        return None
+    return max(times)
+
+
+def record_with_visible_settlement(
+    record: HistoricalMarketRecord,
+    as_of: datetime,
+) -> HistoricalMarketRecord:
+    """Drop a settlement label that is not published yet. The row itself stays."""
+    published_at = settlement_label_publication_time(record)
+    if record.settlement_outcome is None or published_at is None or published_at <= _as_utc(as_of):
+        return record
+    return replace(
+        record,
+        settlement_outcome=None,
+        settlement_ambiguous=None,
+        settlement_status=None,
+    )
+
+
+def records_known_at(
+    records: tuple[HistoricalMarketRecord, ...] | list[HistoricalMarketRecord],
+    as_of: datetime,
+) -> tuple[HistoricalMarketRecord, ...]:
+    """Rows whose calendar date has arrived, with unpublished settlement labels removed."""
+    visible_on = _as_utc(as_of).date()
+    return tuple(
+        record_with_visible_settlement(record, as_of)
+        for record in records
+        if record.record_date <= visible_on
+    )
 
 
 def _optional_nullable_bool(value: object, *, field: str, line_number: int) -> bool | None:
@@ -675,13 +749,14 @@ def qualify_historical_records(
         credible_rows=len(credible_rows),
     )
     allowed = block_reason is None
+    settlement_label_present = bool(outcomes)
     label, note = _paper_profit_copy(block_reason, qualifications)
     return HistoricalSelectionQualification(
         records=qualifications,
         profitability_claims_meaningful=allowed,
         closed_position_evaluation_supported=allowed,
-        has_settlement=allowed,
-        settlement_label_present=bool(outcomes),
+        has_settlement=settlement_label_present,
+        settlement_label_present=settlement_label_present,
         credible_settlement=bool(credible_rows) and len(outcomes) <= 1,
         settlement_outcome=settlement_outcome,
         settlement_ambiguous=settlement_ambiguous,
