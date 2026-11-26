@@ -4,6 +4,7 @@ import json
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from local_market_agent.cli import app
@@ -17,6 +18,7 @@ from local_market_agent.operations import (
 from local_market_agent.operations.phase7_historical_dataset import (
     credible_settlement_accepted,
 )
+from local_market_agent.operations.phase7_market_data import load_phase7_market_inputs
 from local_market_agent.storage import SQLiteRepository
 
 FIXTURES = Path("data/fixtures/historical_validator")
@@ -368,6 +370,36 @@ def test_may1_receipt_omits_later_rows_and_may5_keeps_visible_yes(tmp_path):
     assert "2026-05-02" not in json.dumps(late_market)
     assert "2026-05-03" not in json.dumps(late_market)
     assert "2026-05-04" not in json.dumps(late_market)
+
+
+@pytest.mark.parametrize(
+    ("observed_status", "expected_before"),
+    [("open", "open"), ("closed", "closed"), ("unknown", "unknown"),
+     ("unrecognized", "unknown"), (None, "open")],
+)
+def test_snapshot_respects_market_state_until_label_publication(
+    tmp_path, observed_status, expected_before,
+):
+    row = json.loads(ACCEPTANCE.read_text().splitlines()[0])
+    if observed_status is None:
+        del row["market_status_at_timestamp"]
+    else:
+        row["market_status_at_timestamp"] = observed_status
+    row["settlement"]["resolved_at"] = "2026-05-01T21:00:00Z"
+    row["settlement"]["label_available_at"] = "2026-05-01T22:00:00Z"
+    path = tmp_path / "market.jsonl"
+    path.write_text(json.dumps(row) + "\n")
+
+    for hour, expected_status, outcome in (
+        (20, expected_before, None), (21, expected_before, None), (22, "settled", "yes"),
+    ):
+        inputs = load_phase7_market_inputs(
+            market_source="historical-file", market_id=row["market_id"], historical_file=path,
+            market_fixture=tmp_path, evidence_fixture=tmp_path, raw_cache_dir=tmp_path,
+            now=datetime(2026, 5, 1, hour, tzinfo=UTC), refresh_market_timestamp=False,
+        )
+        assert inputs.snapshot.market.status.value == expected_status
+        assert inputs.audit.settlement_outcome == outcome
 
 
 def test_acceptance_label_stays_hidden_until_publication_time():

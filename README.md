@@ -51,6 +51,6 @@ Optional research workflows: [NBA probabilities](docs/reference/NBA_PROBABILITY.
 | [`tests/`](tests/) | Offline tests and optional network checks |
 | [`docs/`](docs/README.md) | User/agent guides, technical references and release history |
 
-Version **0.5.1** · [What's new](docs/releases/0.5.1.md) · [Changelog](docs/CHANGELOG.md)
+Version **0.5.2** · [What's new](docs/releases/0.5.2.md) · [Changelog](docs/CHANGELOG.md)
 
 Contributing? Start with [AGENTS.md](AGENTS.md). Codex implements; subagents review and merge. Safety defaults remain `REAL_MONEY_ENABLED=false`, `ALLOW_LIVE_ORDERS=false`, `HUMAN_APPROVAL_REQUIRED=true`.
