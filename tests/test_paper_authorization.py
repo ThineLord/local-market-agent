@@ -66,6 +66,25 @@ def test_approval_cannot_override_hard_checks(repo, prepared, mode):
     assert business_hash(repo) == before
 
 
+def test_same_signal_retry_returns_the_order_without_a_new_receipt(repo, prepared):
+    service, intent = prepared
+    approve(service, intent)
+    first = service.execute(intent.intent_id, now=NOW)
+    signal = repo.load_signal(intent.intent.signal_id)
+    risk = repo.load_risk_decision(intent.risk_decision_id)
+    snapshot = repo.load_market_snapshot(intent.snapshot_id)
+    brief = repo.load_brief(intent.brief_id)
+    second = service.prepare(signal, risk, snapshot, brief, now=NOW, simulation=True)
+    assert second.intent_id != intent.intent_id
+    before = business_hash(repo)
+    retry = service.execute(second.intent_id, now=NOW)
+    assert retry["status"] == "completed" and retry["order_id"] == first["order_id"]
+    assert business_hash(repo) == before
+    assert repo.load_execution_receipt(second.intent_id) is None
+    assert repo.count("paper_execution_receipts") == 1
+    assert [repo.count(table) for table in ("paper_orders", "paper_fills", "positions")] == [1, 1, 1]
+
+
 def test_approved_concurrent_retry_is_one_fill(repo, prepared):
     service, intent = prepared
     approval = approve(service, intent)
