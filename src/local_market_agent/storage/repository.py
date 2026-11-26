@@ -509,3 +509,52 @@ class SQLiteRepository:
 
     def load_settlement_receipt(self, market_id: str) -> SettlementReceipt | None:
         return self._load("settlement_receipts", "receipt_id", market_id, SettlementReceipt)
+
+
+class ReadOnlySQLiteRepository(SQLiteRepository):
+    """Open an existing ledger with the dashboard's ``mode=ro`` URI and leave it unchanged.
+
+    A missing path or a missing table is absent data. Permission errors, directories,
+    and files that are not databases propagate instead of looking like an empty ledger.
+    """
+
+    def __init__(self, db_path: str | Path) -> None:
+        self.db_path = Path(db_path)
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(f"{self.db_path.resolve().as_uri()}?mode=ro", uri=True)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    def _list(
+        self,
+        table: str,
+        model_cls: type[T],
+        market_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[T]:
+        if self._table_absent(table):
+            return []
+        return super()._list(table, model_cls, market_id, limit)
+
+    def _load(self, table: str, key_name: str, key: str, model_cls: type[T]) -> T | None:
+        if self._table_absent(table):
+            return None
+        return super()._load(table, key_name, key, model_cls)
+
+    def _table_absent(self, table: str) -> bool:
+        if self._path_missing():
+            return True
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                (table,),
+            ).fetchone()
+        return row is None
+
+    def _path_missing(self) -> bool:
+        try:
+            self.db_path.lstat()
+        except FileNotFoundError:
+            return True
+        return False

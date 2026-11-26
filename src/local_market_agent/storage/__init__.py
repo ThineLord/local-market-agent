@@ -1,3 +1,3 @@
-from local_market_agent.storage.repository import SQLiteRepository
+from local_market_agent.storage.repository import ReadOnlySQLiteRepository, SQLiteRepository
 
-__all__ = ["SQLiteRepository"]
+__all__ = ["ReadOnlySQLiteRepository", "SQLiteRepository"]
