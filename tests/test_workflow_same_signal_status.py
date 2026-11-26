@@ -248,7 +248,7 @@ def test_unlocated_receipt_suggests_a_read_only_query(repo, prepared) -> None:
     assert "paper-replay" not in mismatched["next_command"]
 
 
-def test_two_intents_without_receipts_are_not_called_filled(repo, prepared) -> None:
+def test_order_with_two_possible_intents_has_unavailable_attribution(repo, prepared) -> None:
     service, intent = prepared
     approve(service, intent)
     service.execute(intent.intent_id, now=NOW)
@@ -263,7 +263,7 @@ def test_two_intents_without_receipts_are_not_called_filled(repo, prepared) -> N
     rows = workflow_status(repo, Settings(db_path=repo.db_path), now=NOW)["intents"]
     assert {row["intent_id"] for row in rows} == {intent.intent_id, second.intent_id}
     for row in rows:
-        assert row["status"] == "not_executed"
+        assert row["status"] == "unavailable"
         assert "filled" not in row["reasons"][0]
         assert "approved" not in row["reasons"][0]
         assert "no execution receipt names the intent" in row["reasons"][0]

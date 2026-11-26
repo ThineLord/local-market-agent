@@ -127,10 +127,10 @@ def _project_intent(repo, settings, now, prepared, approval, snapshot, orders, p
         return status, reasons, _db_command(repo, "paper-status")
     if unowned is not None:
         reason = (
-            f"Intent {intent.intent_id} has no execution record. "
-            "A paper order exists for this signal, but no execution receipt names the intent that completed it."
+            "Multiple intents share this signal. A paper order exists, but "
+            "no execution receipt names the intent that completed it."
         )
-        return "not_executed", [reason], _db_command(repo, "paper-status")
+        return "unavailable", [reason], _db_command(repo, "paper-status")
     return _unexecuted(repo, settings, now, prepared, approval, snapshot)
 
 
