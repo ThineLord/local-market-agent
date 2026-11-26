@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 from local_market_agent.cli import app
 from local_market_agent.config import RiskGateConfig, Settings
 from local_market_agent.operations import (
+    Phase7DailyRunner,
     Phase7SandboxRunner,
     load_historical_dataset,
     phase7_market_data_audit,
@@ -39,6 +40,21 @@ def test_credible_settlement_rejects_builtin_ambiguous_fixture():
 
 def test_market_data_audit_rejects_calibration_only_as_paper_proof():
     payload = _audit(CALIBRATION)
+    before_row = phase7_market_data_audit(
+        "historical-file",
+        historical_file=CALIBRATION,
+        as_of=datetime(2026, 5, 1, 16, tzinfo=UTC),
+    )
+    at_row = phase7_market_data_audit(
+        "historical-file",
+        historical_file=CALIBRATION,
+        as_of=datetime(2026, 5, 1, 20, tzinfo=UTC),
+    )
+    published = phase7_market_data_audit(
+        "historical-file",
+        historical_file=CALIBRATION,
+        as_of=datetime(2026, 5, 6, 15, tzinfo=UTC),
+    )
 
     assert payload["historical_profile"] == "calibration_only_last_price"
     assert payload["paper_pnl_allowed"] is False
@@ -59,6 +75,20 @@ def test_market_data_audit_rejects_calibration_only_as_paper_proof():
     assert payload["historical_record_qualifications"][0]["bid_ask_present"] is False
     assert payload["historical_record_qualifications"][0]["credible_settlement"] is True
     assert payload["historical_record_qualifications"][0]["paper_evaluation_allowed"] is False
+    assert before_row.historical_record_count == 0
+    assert before_row.has_settlement is False
+    assert before_row.profitability_claims_meaningful is False
+    assert at_row.historical_record_count == 1
+    assert at_row.has_settlement is False
+    assert at_row.settlement_outcome is None
+    assert at_row.profitability_claims_meaningful is False
+    assert at_row.paper_profit_block_reason == "calibration_only_last_price"
+    assert published.has_settlement is True
+    assert published.settlement_outcome == "no"
+    assert published.credible_settlement is True
+    assert published.profitability_claims_meaningful is False
+    assert published.closed_position_evaluation_supported is False
+    assert published.paper_profit_block_reason == "calibration_only_last_price"
 
 
 def test_market_data_audit_accepts_ordinary_and_acceptance_samples():
@@ -260,11 +290,16 @@ def test_calibration_sandbox_and_daily_report_do_not_explain_paper_pnl(tmp_path)
     assert nested["closed_position_evaluation_supported"] is False
     assert nested["has_settlement"] is False
     assert nested["settlement_outcome"] is None
-    assert nested["paper_profit_note"] == semantics["note"]
+    assert semantics["qualification_scope"] == "historical file"
+    assert "whole historical file" in semantics["qualification_scope_note"]
+    assert "Calibration-only" in semantics["note"]
+    assert nested["paper_profit_note"] != semantics["note"]
+    assert "settlement/outcome fields are missing" in nested["paper_profit_note"]
     assert "Profitability claims meaningful | False" in report
     assert "Has settlement | False" in report
     assert "Closed position evaluation supported | False" in report
-    assert semantics["note"] in report
+    assert nested["paper_profit_note"] in report
+    assert "Calibration-only" not in report
     assert PAPER_PNL_SENTENCE not in report
     assert '"settlement_outcome": "no"' not in _stored_receipts(repo)
 
@@ -373,8 +408,19 @@ def test_acceptance_label_stays_hidden_until_publication_time():
     assert '"yes"' not in json.dumps(hidden.as_dict())
     assert same_day.settlement_outcome is None
     assert same_day.has_settlement is False
-    assert same_day.historical_end_date == "2026-05-01"
+    assert same_day.historical_record_count == 0
+    assert same_day.historical_end_date is None
     assert "2026-05-02" not in json.dumps(same_day.as_dict())
+    observed = phase7_market_data_audit(
+        "historical-file",
+        historical_file=ACCEPTANCE,
+        as_of=datetime(2026, 5, 1, 20, tzinfo=UTC),
+    )
+    assert observed.historical_end_date == "2026-05-01"
+    assert observed.historical_record_count == 1
+    assert observed.settlement_outcome is None
+    assert observed.has_settlement is False
+    assert "2026-05-02" not in json.dumps(observed.as_dict())
     assert visible.settlement_outcome == "yes"
     assert visible.has_settlement is True
     assert visible.credible_settlement is True
@@ -396,6 +442,10 @@ def test_acceptance_may1_sandbox_receipt_hides_unpublished_yes(tmp_path):
 
     assert result.summary["market_data"]["settlement_outcome"] == "yes"
     assert result.summary["profitability_claims_meaningful"] is True
+    assert result.summary["sandbox_data_semantics"]["qualification_scope"] == "historical file"
+    assert "whole historical file" in result.summary["sandbox_data_semantics"][
+        "qualification_scope_note"
+    ]
     assert market["settlement_outcome"] is None
     assert market["has_settlement"] is False
     assert market["profitability_claims_meaningful"] is False
@@ -405,6 +455,106 @@ def test_acceptance_may1_sandbox_receipt_hides_unpublished_yes(tmp_path):
     assert "2026-05-06" not in stored
     assert PAPER_PNL_SENTENCE not in report
     assert "Has settlement | False" in report
+
+
+def test_explicit_same_day_timestamp_waits_for_that_instant(tmp_path):
+    lines = ORDINARY.read_text(encoding="utf-8").splitlines()
+    last = json.loads(lines[-1])
+    last["timestamp"] = "2026-05-05T23:00:00Z"
+    lines[-1] = json.dumps(last)
+    stamped = tmp_path / "phase7_historical_5d_timestamped.jsonl"
+    stamped.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    at_16 = datetime(2026, 5, 5, 16, tzinfo=UTC)
+    at_23 = datetime(2026, 5, 5, 23, tzinfo=UTC)
+
+    file_audit = phase7_market_data_audit("historical-file", historical_file=stamped)
+    early = phase7_market_data_audit(
+        "historical-file", historical_file=stamped, as_of=at_16,
+    )
+    late = phase7_market_data_audit(
+        "historical-file", historical_file=stamped, as_of=at_23,
+    )
+    original = phase7_market_data_audit(
+        "historical-file", historical_file=ORDINARY, as_of=at_16,
+    )
+
+    assert file_audit.historical_record_count == 5
+    assert file_audit.settlement_outcome == "yes"
+    assert file_audit.has_settlement is True
+    assert file_audit.profitability_claims_meaningful is True
+    assert early.historical_record_count == 4
+    assert early.historical_end_date == "2026-05-04"
+    assert early.settlement_outcome is None
+    assert early.has_settlement is False
+    assert early.profitability_claims_meaningful is False
+    assert '"yes"' not in json.dumps(early.as_dict())
+    assert late.historical_record_count == 5
+    assert late.settlement_outcome == "yes"
+    assert late.has_settlement is True
+    assert late.profitability_claims_meaningful is True
+    assert original.historical_record_count == 5
+    assert original.settlement_outcome == "yes"
+    assert original.has_settlement is True
+    assert original.profitability_claims_meaningful is True
+
+    result, repo = _sandbox(
+        tmp_path / "sandbox-16",
+        stamped,
+        start_date=date(2026, 5, 5),
+        days=1,
+        require_manual_approval=True,
+    )
+    market = result.records[0].metadata["market_data"]
+    manifest = repo.load_phase7_run_manifest(result.records[0].run_id)
+    snapshot = repo.load_market_snapshot(result.records[0].snapshot_id)
+    stored = _stored_receipts(repo)
+
+    assert result.summary["market_data"]["settlement_outcome"] == "yes"
+    assert result.summary["profitability_claims_meaningful"] is True
+    assert result.summary["sandbox_data_semantics"]["qualification_scope"] == "historical file"
+    assert market["historical_record_count"] == 4
+    assert market["historical_record_date"] == "2026-05-04"
+    assert market["settlement_outcome"] is None
+    assert market["has_settlement"] is False
+    assert market["profitability_claims_meaningful"] is False
+    assert manifest is not None
+    assert manifest.configuration_snapshot["market_data"]["settlement_outcome"] is None
+    assert manifest.metadata["market_data"]["settlement_outcome"] is None
+    assert manifest.metadata["market_data"]["has_settlement"] is False
+    assert '"settlement_outcome": "yes"' not in stored
+    assert snapshot is not None
+    assert snapshot.last_price == 0.56
+    assert snapshot.as_of == datetime(2026, 5, 4, 16, tzinfo=UTC)
+
+    day = tmp_path / "day-23"
+    day.mkdir()
+    settings = Settings(
+        db_path=day / "qualification.sqlite",
+        research_brief_dir=day / "briefs",
+        risk_gates=RiskGateConfig(require_manual_approval=False),
+    )
+    day_repo = SQLiteRepository(settings.db_path)
+    late_record = Phase7DailyRunner(
+        repository=day_repo,
+        settings=settings,
+        report_dir=day / "reports",
+        market_source="historical-file",
+        historical_file=stamped,
+    ).run(now=at_23, require_manual_approval=True)
+    late_market = late_record.metadata["market_data"]
+    late_manifest = day_repo.load_phase7_run_manifest(late_record.run_id)
+    late_snapshot = day_repo.load_market_snapshot(late_record.snapshot_id)
+
+    assert late_market["historical_record_count"] == 5
+    assert late_market["settlement_outcome"] == "yes"
+    assert late_market["has_settlement"] is True
+    assert late_market["profitability_claims_meaningful"] is True
+    assert late_manifest is not None
+    assert late_manifest.configuration_snapshot["market_data"]["settlement_outcome"] == "yes"
+    assert late_manifest.metadata["market_data"]["settlement_outcome"] == "yes"
+    assert late_snapshot is not None
+    assert late_snapshot.last_price == 0.95
+    assert late_snapshot.as_of == at_23
 
 
 def _audit(path: Path, market_id: str | None = None) -> dict[str, object]:

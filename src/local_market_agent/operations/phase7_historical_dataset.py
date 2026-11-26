@@ -36,6 +36,7 @@ class HistoricalMarketRecord:
     settlement_status: str | None = None
     settlement_resolved_at: datetime | None = None
     settlement_label_available_at: datetime | None = None
+    observation_time_explicit: bool = False
 
     @property
     def record_date(self) -> date:
@@ -311,6 +312,7 @@ def _record_from_payload(
         settlement_status=settlement_status,
         settlement_resolved_at=settlement_resolved_at,
         settlement_label_available_at=settlement_label_available_at,
+        observation_time_explicit=payload.get("timestamp") is not None,
     )
 
 
@@ -528,13 +530,12 @@ def settlement_label_publication_time(record: HistoricalMarketRecord) -> datetim
     return max(times)
 
 
-def record_with_visible_settlement(
-    record: HistoricalMarketRecord,
-    as_of: datetime,
-) -> HistoricalMarketRecord:
-    """Drop a settlement label that is not published yet. The row itself stays."""
-    published_at = settlement_label_publication_time(record)
-    if record.settlement_outcome is None or published_at is None or published_at <= _as_utc(as_of):
+def _without_settlement_label(record: HistoricalMarketRecord) -> HistoricalMarketRecord:
+    if (
+        record.settlement_outcome is None
+        and record.settlement_ambiguous is None
+        and record.settlement_status is None
+    ):
         return record
     return replace(
         record,
@@ -544,17 +545,61 @@ def record_with_visible_settlement(
     )
 
 
+def record_with_visible_settlement(
+    record: HistoricalMarketRecord,
+    as_of: datetime,
+) -> HistoricalMarketRecord:
+    """Drop a settlement label that is not published yet. The row itself stays."""
+    published_at = settlement_label_publication_time(record)
+    if record.settlement_outcome is None or published_at is None or published_at <= _as_utc(as_of):
+        return record
+    return _without_settlement_label(record)
+
+
+def record_known_at(record: HistoricalMarketRecord, as_of: datetime) -> bool:
+    """Whether this observation exists at as_of.
+
+    A date-only row is visible for that whole UTC date. An explicit timestamp
+    stays hidden until that UTC instant.
+    """
+    moment = _as_utc(as_of)
+    if record.observation_time_explicit:
+        return record.timestamp <= moment
+    return record.record_date <= moment.date()
+
+
 def records_known_at(
     records: tuple[HistoricalMarketRecord, ...] | list[HistoricalMarketRecord],
     as_of: datetime,
 ) -> tuple[HistoricalMarketRecord, ...]:
-    """Rows whose calendar date has arrived, with unpublished settlement labels removed."""
-    visible_on = _as_utc(as_of).date()
+    """Rows already observed at as_of, with unpublished settlement labels removed."""
     return tuple(
         record_with_visible_settlement(record, as_of)
         for record in records
-        if record.record_date <= visible_on
+        if record_known_at(record, as_of)
     )
+
+
+def input_record_at(
+    dataset: HistoricalDataset,
+    as_of: datetime,
+    *,
+    market_id: str | None = None,
+) -> HistoricalMarketRecord:
+    """Choose the row a simulated day may use as its market input.
+
+    The row for that date is the input once it is observed. If its explicit
+    timestamp is still ahead and an earlier row is already visible, that
+    earlier row is the input. A file with no earlier row keeps the dated row
+    so the single-day input still exists; the caller hides its label.
+    """
+    dated = dataset.record_for_date(_as_utc(as_of).date(), market_id=market_id)
+    if record_known_at(dated, as_of):
+        return dated
+    known = records_known_at(dataset.records_for_market(dated.market_id), as_of)
+    if known:
+        return known[-1]
+    return dated
 
 
 def _optional_nullable_bool(value: object, *, field: str, line_number: int) -> bool | None:

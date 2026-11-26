@@ -488,7 +488,7 @@ def _sandbox_data_semantics(market_data: dict[str, Any]) -> dict[str, Any]:
             "A current read-only snapshot source is selected; repeated simulated days are "
             "not a historical backtest and profitability claims are not meaningful."
         )
-    return {
+    semantics = {
         "label": label,
         "historical_market_data": bool(market_data.get("is_historical")),
         "snapshot_only": bool(market_data.get("is_snapshot_only")),
@@ -497,6 +497,13 @@ def _sandbox_data_semantics(market_data: dict[str, Any]) -> dict[str, Any]:
         ),
         "note": note,
     }
+    if market_data.get("is_historical"):
+        semantics["qualification_scope"] = "historical file"
+        semantics["qualification_scope_note"] = (
+            "This qualification describes the whole historical file. "
+            "A simulated day's report uses only observations visible at that time."
+        )
+    return semantics
 
 
 def _status_counts(records: list[Phase7RunRecord]) -> dict[str, int]:

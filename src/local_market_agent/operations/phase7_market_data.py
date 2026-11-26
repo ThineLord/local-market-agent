@@ -13,8 +13,10 @@ from local_market_agent.adapters import (
 )
 from local_market_agent.operations.phase7_historical_dataset import (
     HistoricalMarketRecord,
+    input_record_at,
     load_historical_dataset,
     qualify_historical_records,
+    record_known_at,
     record_with_visible_settlement,
     records_known_at,
 )
@@ -216,9 +218,20 @@ def load_phase7_market_inputs(
         evidence = []
     elif audit.market_source == MARKET_SOURCE_HISTORICAL_FILE:
         dataset = load_historical_dataset(historical_file)
-        record = dataset.record_for_date(now.date(), market_id=market_id)
-        visible_record = record_with_visible_settlement(record, now)
-        snapshot = record.to_snapshot()
+        record = input_record_at(dataset, now, market_id=market_id)
+        if record_known_at(record, now):
+            visible_record = record_with_visible_settlement(record, now)
+            snapshot = record.to_snapshot()
+        else:
+            # The only row for this day is still ahead. Keep its quotes as the
+            # single-day input, and do not treat its settlement as observed.
+            visible_record = replace(
+                record,
+                settlement_outcome=None,
+                settlement_ambiguous=None,
+                settlement_status=None,
+            )
+            snapshot = visible_record.to_snapshot()
         evidence = list(record.evidence)
         audit = replace(
             audit,
