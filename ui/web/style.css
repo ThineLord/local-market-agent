@@ -90,7 +90,7 @@ html{background:var(--paper)}
 .workflow-panel { margin-top:24px; padding:20px; }
 .workflow-steps { color:var(--muted); line-height:1.7; }
 .workflow-item { padding:16px 0; border-top:1px solid var(--line); }
-.workflow-item small { display:block; margin-top:8px; }
+.workflow-item small { display:block; margin-top:8px; overflow-wrap:anywhere; }
 .workflow-command { display:flex; gap:12px; align-items:center; }
 .workflow-command code { flex:1; min-width:0; overflow-wrap:anywhere; font-size:12px; }
 @media(max-width:600px) { .workflow-command { flex-direction:column; align-items:flex-start; } }
